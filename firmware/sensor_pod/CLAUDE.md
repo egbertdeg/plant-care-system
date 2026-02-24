@@ -84,8 +84,8 @@ Start simple, add complexity incrementally:
 
 ## Current Status
 - [x] Blink test working
-- [ ] One soil sensor reading
-- [ ] I2C multiplexer integrated
-- [ ] All sensors reading
+- [x] One soil sensor reading
+- [x] I2C multiplexer integrated (PCA9546, Ch0=light+OLED, Ch1=soil)
+- [ ] All sensors reading (SHT40 + 2 more soil sensors on Ch2/Ch3)
 - [ ] WiFi connection
 - [ ] MQTT publishing
