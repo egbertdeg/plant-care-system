@@ -1,0 +1,34 @@
+# Firmware
+.pio/
+.vscode/
+*.bin
+*.elf
+
+# Secrets - NEVER commit these
+firmware/sensor_pod/include/secrets.h
+firmware/watering_can/include/secrets.h
+.env
+*.key
+*.pem
+
+# Backend
+__pycache__/
+*.pyc
+venv/
+.pytest_cache/
+
+# Mobile
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+
+# ML
+*.pkl
+*.h5
+data/raw/*
+!data/raw/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
