@@ -2,6 +2,57 @@
 
 ## Current Phase: Prototype - Not Yet Started
 
+---
+
+## ESP32-S3 Upload Process (CRITICAL - READ FIRST)
+
+**Board:** Adafruit ESP32-S3 Feather (native USB - no UART chip)
+
+**Key Issue:** Native USB means standard auto-reset does NOT work. Must manually enter bootloader mode every upload.
+
+### Upload Workflow (Every Time)
+
+1. **Enter bootloader mode:**
+   - Hold **BOOT** button
+   - Press and release **RESET** button
+   - Release **BOOT** button
+   - Board switches to COM5 (bootloader mode)
+
+2. **Run upload:**
+   - PlatformIO uploads to COM5
+   - Uses `--before=no_reset` flag (board already in bootloader)
+
+3. **Start firmware:**
+   - Press **RESET** once
+   - Board switches back to COM4 (normal mode)
+   - Firmware runs, serial monitor on COM4
+
+### platformio.ini Settings
+
+```ini
+upload_port = COM5        ; bootloader mode port
+monitor_port = COM4       ; normal run mode port
+upload_flags =
+    --before=no_reset     ; skip auto-reset, board already in bootloader
+    --after=hard_reset
+```
+
+### COM Port Reference
+
+- **COM3** = Intel AMT (laptop built-in — ignore)
+- **COM4** = ESP32 normal/run mode → serial monitor here
+- **COM5** = ESP32 bootloader mode → upload here (only appears after BOOT+RESET)
+
+### Quick Reference
+
+```
+Upload:  BOOT+RESET → pio upload → RESET
+Monitor: pio device monitor --port COM4
+PIO bin: C:\Users\egber\.platformio\penv\Scripts\pio.exe  (not in PATH)
+```
+
+---
+
 ## Hardware
 - Board: Adafruit ESP32-S3 Feather
 - Sensors (to be added incrementally):
