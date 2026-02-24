@@ -31,8 +31,33 @@ Start simple, add complexity incrementally:
 - Test each sensor individually before integrating
 - Error handling for all I2C operations
 
+## Upload Process (Confirmed Working)
+
+**Key fact:** Board uses native USB (no UART chip). Standard 1200bps auto-reset does NOT work.
+
+**Every upload requires manual bootloader entry:**
+1. Hold **BOOT** + press **RESET** → board switches to COM5 (bootloader mode)
+2. Run upload (`pio run --target upload`)
+3. Press **RESET** once after upload → firmware starts, board back on COM4
+
+**COM ports on this machine:**
+- COM3 = Intel AMT (laptop built-in — ignore)
+- COM4 = ESP32 normal/run mode (serial monitor here)
+- COM5 = ESP32 bootloader mode (only appears after BOOT+RESET)
+
+**PlatformIO binary:** `C:\Users\egber\.platformio\penv\Scripts\pio.exe` (not in PATH)
+
+**platformio.ini settings that make this work:**
+```ini
+upload_port = COM5        ; bootloader mode port
+monitor_port = COM4       ; normal run mode port
+upload_flags =
+    --before=no_reset     ; skip auto-reset, board already in bootloader
+    --after=hard_reset
+```
+
 ## Current Status
-- [ ] Blink test working
+- [x] Blink test working
 - [ ] One soil sensor reading
 - [ ] I2C multiplexer integrated
 - [ ] All sensors reading
