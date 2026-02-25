@@ -48,10 +48,13 @@ REST API (public)
 ```json
 {
   "name": "Monstera",
+  "species": "Monstera deliciosa",
   "location": "Living room",
+  "size_cm": 45.0,
+  "pot_size_l": 5.0,
   "target_volume_ml": 250,
   "target_interval_days": 7,
-  "notes": "Likes indirect light"
+  "notes": "Had aphids in Jan — treated with neem oil. Now recovered."
 }
 ```
 
@@ -60,13 +63,38 @@ REST API (public)
 {
   "id": 3,
   "name": "Monstera",
+  "species": "Monstera deliciosa",
+  "location": "Living room",
+  "size_cm": 45.0,
+  "pot_size_l": 5.0,
   "target_volume_ml": 250,
   "target_interval_days": 7,
+  "notes": "Had aphids in Jan — treated with neem oil. Now recovered.",
   "last_watered": "2026-02-20T10:30:00+00:00",
   "days_since_water": 5,
   "needs_water": false
 }
 ```
+
+### Plant photos
+
+Photos are stored as binary in PostgreSQL. Multiple photos per plant are supported.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/plants/{id}/photos` | Upload a photo (multipart/form-data) |
+| GET | `/plants/{id}/photos` | List photo metadata (no image data) |
+| GET | `/plants/{id}/photos/{photo_id}` | Download a photo (raw image bytes) |
+| DELETE | `/plants/{id}/photos/{photo_id}` | Delete a photo |
+
+**Upload example (curl):**
+```bash
+curl -X POST https://plant-api-production-7c02.up.railway.app/plants/1/photos \
+  -F "file=@photo.jpg" \
+  -F "caption=After repotting"
+```
+
+Accepted types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`.
 
 ### Watering history
 
@@ -113,10 +141,27 @@ User-maintained plant profiles. `id` = `plant_index` on the watering can (1–20
 |---|---|---|
 | `id` | int | Plant index 1-20 (matches watering can) |
 | `name` | str? | Display name |
+| `species` | str? | Species / cultivar (e.g. "Monstera deliciosa") |
 | `location` | str? | Room / shelf |
+| `size_cm` | float? | Height (upright) or length (climber/trailing) in cm |
+| `pot_size_l` | float? | Pot volume in litres |
 | `target_volume_ml` | float? | Desired pour volume |
 | `target_interval_days` | int? | Days between waterings |
-| `notes` | str? | Free text |
+| `notes` | text? | Plant diary — pest history, repotting notes, etc. |
+
+### `plant_photos`
+
+Binary image storage. Multiple photos per plant.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | int | Auto-increment PK |
+| `plant_id` | int | Matches `plants.id` |
+| `filename` | str | Original filename |
+| `content_type` | str | MIME type (e.g. `image/jpeg`) |
+| `data` | bytea | Raw image bytes |
+| `caption` | str? | Optional label |
+| `uploaded_at` | datetime | Upload timestamp (UTC) |
 
 ### `watering_events`
 
@@ -183,7 +228,7 @@ uvicorn main:app --reload
 |---|---|
 | `main.py` | FastAPI app, lifespan, endpoints |
 | `mqtt_client.py` | MQTT subscriber, writes to DB |
-| `models.py` | SQLAlchemy `SensorReading` model |
+| `models.py` | SQLAlchemy models: `SensorReading`, `Plant`, `WateringEvent` |
 | `database.py` | Engine, session, Base |
 | `config.py` | Pydantic settings from env vars |
 | `railway.toml` | Railway build/start config |

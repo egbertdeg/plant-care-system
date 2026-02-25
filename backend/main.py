@@ -3,13 +3,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, Depends, Query, HTTPException
+from fastapi import FastAPI, Depends, Query, HTTPException, UploadFile, File, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from database import engine, get_db, Base
-from models import SensorReading, Plant, WateringEvent
+from models import SensorReading, Plant, PlantPhoto, WateringEvent
 from mqtt_client import create_mqtt_client, start_mqtt
 
 logging.basicConfig(level=logging.INFO)
@@ -19,21 +19,24 @@ mqtt_client = create_mqtt_client()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)  # creates any new tables (plants, watering_events)
+    Base.metadata.create_all(bind=engine)  # creates any new tables on startup
     start_mqtt(mqtt_client)
     yield
     mqtt_client.loop_stop()
     mqtt_client.disconnect()
 
 
-app = FastAPI(title="Plant Care API", version="2.0", lifespan=lifespan)
+app = FastAPI(title="Plant Care API", version="2.1", lifespan=lifespan)
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
 class PlantUpdate(BaseModel):
     name:                 Optional[str]   = None
+    species:              Optional[str]   = None
     location:             Optional[str]   = None
+    size_cm:              Optional[float] = None
+    pot_size_l:           Optional[float] = None
     target_volume_ml:     Optional[float] = None
     target_interval_days: Optional[int]   = None
     notes:                Optional[str]   = None
@@ -63,7 +66,10 @@ def _plant_summary(plant: Plant, last_event: Optional[WateringEvent]) -> dict:
     return {
         "id":                   plant.id,
         "name":                 plant.name,
+        "species":              plant.species,
         "location":             plant.location,
+        "size_cm":              plant.size_cm,
+        "pot_size_l":           plant.pot_size_l,
         "target_volume_ml":     plant.target_volume_ml,
         "target_interval_days": plant.target_interval_days,
         "notes":                plant.notes,
@@ -73,7 +79,7 @@ def _plant_summary(plant: Plant, last_event: Optional[WateringEvent]) -> dict:
     }
 
 
-# ── Sensor pod endpoints (unchanged) ─────────────────────────────────────────
+# ── Sensor pod endpoints ──────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
@@ -153,7 +159,6 @@ def upsert_plant(plant_id: int, body: PlantUpdate, db: Session = Depends(get_db)
         plant = Plant(id=plant_id)
         db.add(plant)
 
-    # Only update fields that were explicitly supplied in the request
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(plant, field, value)
@@ -169,6 +174,98 @@ def upsert_plant(plant_id: int, body: PlantUpdate, db: Session = Depends(get_db)
         .first()
     )
     return _plant_summary(plant, last_event)
+
+
+# ── Plant photo endpoints ─────────────────────────────────────────────────────
+
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+@app.post("/plants/{plant_id}/photos", status_code=201)
+async def upload_photo(
+    plant_id: int,
+    file: UploadFile = File(...),
+    caption: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Upload a photo for a plant. Accepts JPEG, PNG, WebP, GIF."""
+    if plant_id < 1 or plant_id > 20:
+        raise HTTPException(status_code=400, detail="plant_id must be 1-20")
+    if not db.query(Plant).filter(Plant.id == plant_id).first():
+        raise HTTPException(status_code=404, detail=f"Plant {plant_id} has no profile yet")
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported image type: {file.content_type}")
+
+    data = await file.read()
+    photo = PlantPhoto(
+        plant_id=plant_id,
+        filename=file.filename,
+        content_type=file.content_type,
+        data=data,
+        caption=caption,
+    )
+    db.add(photo)
+    db.commit()
+    db.refresh(photo)
+    return {
+        "id":           photo.id,
+        "plant_id":     photo.plant_id,
+        "filename":     photo.filename,
+        "content_type": photo.content_type,
+        "caption":      photo.caption,
+        "uploaded_at":  photo.uploaded_at,
+    }
+
+
+@app.get("/plants/{plant_id}/photos")
+def list_photos(plant_id: int, db: Session = Depends(get_db)):
+    """List photo metadata for a plant (no image data)."""
+    if plant_id < 1 or plant_id > 20:
+        raise HTTPException(status_code=400, detail="plant_id must be 1-20")
+    photos = (
+        db.query(PlantPhoto)
+        .filter(PlantPhoto.plant_id == plant_id)
+        .order_by(PlantPhoto.uploaded_at)
+        .all()
+    )
+    return [
+        {
+            "id":           p.id,
+            "plant_id":     p.plant_id,
+            "filename":     p.filename,
+            "content_type": p.content_type,
+            "caption":      p.caption,
+            "uploaded_at":  p.uploaded_at,
+        }
+        for p in photos
+    ]
+
+
+@app.get("/plants/{plant_id}/photos/{photo_id}")
+def get_photo(plant_id: int, photo_id: int, db: Session = Depends(get_db)):
+    """Download a photo (returns raw image bytes with correct content-type)."""
+    photo = (
+        db.query(PlantPhoto)
+        .filter(PlantPhoto.id == photo_id, PlantPhoto.plant_id == plant_id)
+        .first()
+    )
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return Response(content=photo.data, media_type=photo.content_type)
+
+
+@app.delete("/plants/{plant_id}/photos/{photo_id}", status_code=204)
+def delete_photo(plant_id: int, photo_id: int, db: Session = Depends(get_db)):
+    """Delete a photo."""
+    photo = (
+        db.query(PlantPhoto)
+        .filter(PlantPhoto.id == photo_id, PlantPhoto.plant_id == plant_id)
+        .first()
+    )
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    db.delete(photo)
+    db.commit()
 
 
 # ── Watering history endpoints ────────────────────────────────────────────────
