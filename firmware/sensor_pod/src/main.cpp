@@ -1,13 +1,13 @@
 /**
  * Sensor Pod - ESP32-S3 Feather
- * Phase 3: Light + Soil + OLED via PCA9546 multiplexer
+ * Phase 4: Light + 3× Soil + SHT40 + OLED via PCA9546 multiplexer
  *
  * Wiring:
  *   ESP32-S3 STEMMA QT → PCA9546 Multiplexer (0x70)
- *     Channel 0 → TSL2591 Light (0x29) → OLED Display (0x3C)  [daisy-chained]
- *     Channel 1 → Soil Sensor 1 (0x36)
- *     Channel 2 → (future: Soil Sensor 2)
- *     Channel 3 → (future: Soil Sensor 3 or SHT40)
+ *     Channel 0 → TSL2591 Light (0x29) → Soil Sensor 1 (0x36)  [daisy-chained]
+ *     Channel 1 → Soil Sensor 2 (0x36)
+ *     Channel 2 → OLED Display (0x3C)
+ *     Channel 3 → SHT40 Temp/Humidity (0x44) → Soil Sensor 3 (0x36)  [daisy-chained]
  */
 
 #include <Arduino.h>
@@ -15,6 +15,7 @@
 #include <Adafruit_TSL2591.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_seesaw.h>
+#include <Adafruit_SHT4x.h>
 
 #define LED_PIN        13
 #define DISPLAY_WIDTH  128
@@ -23,8 +24,10 @@
 
 // PCA9546 — write bitmask to select channels (bit N = channel N)
 #define MUX_ADDR          0x70
-#define MUX_CH_LIGHT_DISP 0x01  // Ch0: TSL2591 (0x29) + OLED (0x3C) daisy-chained
-#define MUX_CH_SOIL_1     0x02  // Ch1: Soil sensor 1 (0x36)
+#define MUX_CH_TSL_SOIL1  0x01  // Ch0: TSL2591 (0x29) + Soil sensor 1 (0x36) daisy-chained
+#define MUX_CH_SOIL_2     0x02  // Ch1: Soil sensor 2 (0x36)
+#define MUX_CH_OLED       0x04  // Ch2: OLED (0x3C)
+#define MUX_CH_SHT_SOIL3  0x08  // Ch3: SHT40 (0x44) + Soil sensor 3 (0x36) daisy-chained
 #define MUX_NONE          0x00  // All channels off
 
 // PAR approximation: Lux × 0.0185 µmol/m²/s
@@ -34,7 +37,10 @@
 
 Adafruit_TSL2591 tsl = Adafruit_TSL2591(2591);
 Adafruit_SSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &Wire, -1);
-Adafruit_seesaw soilSensor;
+Adafruit_seesaw soilSensor1;
+Adafruit_seesaw soilSensor2;
+Adafruit_seesaw soilSensor3;
+Adafruit_SHT4x sht4;
 
 void muxSelect(uint8_t channel) {
   Wire.beginTransmission(MUX_ADDR);
@@ -42,43 +48,40 @@ void muxSelect(uint8_t channel) {
   Wire.endTransmission();
 }
 
-const char* lightLevel(float lux) {
-  if (lux < 50)   return "Dark";
-  if (lux < 200)  return "Low";
-  if (lux < 1000) return "Medium";
-  if (lux < 5000) return "High";
-  return "Bright";
-}
-
-void updateDisplay(float lux, float par, uint16_t moisture, float tempC) {
-  // ── 128×32 layout ─────────────────────────────────
-  //  y= 0  "Light"(left)        "Soil"(right)
-  //  y=10  lux sz2(left)        moisture sz1(right)
-  //  y=24  PAR (left)           temp (right)
-  // ──────────────────────────────────────────────────
+void updateDisplay(float lux, float par,
+                   uint16_t m1, uint16_t m2, uint16_t m3,
+                   float airTempC, float rh) {
+  // ── 128×32 layout (text size 1) ────────────────────────────────
+  //  y= 0  "XXXX lx  PAR XX.X"
+  //  y=11  "T:XX.XC  H:XX.X%"
+  //  y=22  "1:XXX 2:XXX 3:XXX"
+  // ────────────────────────────────────────────────────────────────
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
-
-  // Row 1 — headers
   display.setTextSize(1);
-  display.setCursor(0, 0);  display.print("Light");
-  display.setCursor(70, 0); display.print("Soil");
 
-  // Row 2 — lux (medium) and moisture (small)
-  display.setTextSize(2);
-  display.setCursor(0, 10);
+  // Row 1 — light
+  display.setCursor(0, 0);
   display.print((int)lux);
+  display.print(" lx  PAR ");
+  display.print(par, 1);
 
-  display.setTextSize(1);
-  display.setCursor(70, 10);
-  display.print(moisture);
+  // Row 2 — SHT40 air temp + humidity
+  display.setCursor(0, 11);
+  display.print("T:");
+  display.print(airTempC, 1);
+  display.print("C  H:");
+  display.print(rh, 1);
+  display.print("%");
 
-  // Row 3 — PAR and temperature
-  display.setTextSize(1);
-  display.setCursor(0, 24);
-  display.print(par, 1); display.print("PAR");
-  display.setCursor(70, 24);
-  display.print(tempC, 1); display.print("C");
+  // Row 3 — all 3 soil moisture readings
+  display.setCursor(0, 22);
+  display.print("1:");
+  display.print(m1);
+  display.print(" 2:");
+  display.print(m2);
+  display.print(" 3:");
+  display.print(m3);
 
   display.display();
 }
@@ -89,7 +92,7 @@ void setup() {
 
   Serial.println("=================================");
   Serial.println("  Plant Sensor Pod");
-  Serial.println("  Light + Soil + Display");
+  Serial.println("  Full sensor suite");
   Serial.println("=================================");
 
   pinMode(LED_PIN, OUTPUT);
@@ -105,8 +108,8 @@ void setup() {
   }
   Serial.println("PCA9546 multiplexer found!");
 
-  // Channel 0 — init TSL2591 and OLED (daisy-chained, different addresses)
-  muxSelect(MUX_CH_LIGHT_DISP);
+  // Channel 0 — TSL2591 + soil sensor 1 (daisy-chained, different addresses)
+  muxSelect(MUX_CH_TSL_SOIL1);
 
   if (!tsl.begin()) {
     Serial.println("ERROR: TSL2591 not found on Ch0!");
@@ -116,8 +119,24 @@ void setup() {
   tsl.setGain(TSL2591_GAIN_MED);
   tsl.setTiming(TSL2591_INTEGRATIONTIME_300MS);
 
+  if (!soilSensor1.begin(0x36)) {
+    Serial.println("ERROR: Soil sensor 1 not found on Ch0!");
+    while (1) delay(100);
+  }
+  Serial.println("Soil sensor 1 found!");
+
+  // Channel 1 — soil sensor 2
+  muxSelect(MUX_CH_SOIL_2);
+  if (!soilSensor2.begin(0x36)) {
+    Serial.println("ERROR: Soil sensor 2 not found on Ch1!");
+    while (1) delay(100);
+  }
+  Serial.println("Soil sensor 2 found!");
+
+  // Channel 2 — OLED display
+  muxSelect(MUX_CH_OLED);
   if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDR)) {
-    Serial.println("ERROR: SSD1306 not found on Ch0!");
+    Serial.println("ERROR: SSD1306 not found on Ch2!");
     while (1) delay(100);
   }
   Serial.println("SSD1306 OLED found!");
@@ -130,14 +149,20 @@ void setup() {
   display.println("Starting...");
   display.display();
 
-  // Channel 1 — init soil sensor
-  muxSelect(MUX_CH_SOIL_1);
-
-  if (!soilSensor.begin(0x36)) {
-    Serial.println("ERROR: Soil sensor not found on Ch1!");
+  // Channel 3 — SHT40 + soil sensor 3 (daisy-chained, different addresses)
+  muxSelect(MUX_CH_SHT_SOIL3);
+  if (!sht4.begin()) {
+    Serial.println("ERROR: SHT40 not found on Ch3!");
     while (1) delay(100);
   }
-  Serial.println("Soil sensor found!");
+  sht4.setPrecision(SHT4X_HIGH_PRECISION);
+  Serial.println("SHT40 temp/humidity sensor found!");
+
+  if (!soilSensor3.begin(0x36)) {
+    Serial.println("ERROR: Soil sensor 3 not found on Ch3!");
+    while (1) delay(100);
+  }
+  Serial.println("Soil sensor 3 found!");
 
   digitalWrite(LED_PIN, LOW);
   Serial.println("Setup complete.\n");
@@ -145,30 +170,41 @@ void setup() {
 }
 
 void loop() {
-  // Read light sensor — Channel 0
-  muxSelect(MUX_CH_LIGHT_DISP);
+  // Read light sensor + soil sensor 1 — Channel 0
+  muxSelect(MUX_CH_TSL_SOIL1);
   uint32_t lum = tsl.getFullLuminosity();
   uint16_t ir   = lum >> 16;
   uint16_t full = lum & 0xFFFF;
   float lux = tsl.calculateLux(full, ir);
   if (lux < 0 || isnan(lux)) lux = 0;
   float par = lux * PAR_PER_LUX;
+  uint16_t moisture1 = soilSensor1.touchRead(0);
 
-  // Read soil sensor — Channel 1
-  muxSelect(MUX_CH_SOIL_1);
-  uint16_t moisture = soilSensor.touchRead(0);
-  float tempC = soilSensor.getTemp();
+  // Read soil sensor 2 — Channel 1
+  muxSelect(MUX_CH_SOIL_2);
+  uint16_t moisture2 = soilSensor2.touchRead(0);
+
+  // Read SHT40 + soil sensor 3 — Channel 3
+  muxSelect(MUX_CH_SHT_SOIL3);
+  sensors_event_t humidity_evt, temp_evt;
+  sht4.getEvent(&humidity_evt, &temp_evt);
+  float airTempC = temp_evt.temperature;
+  float rh       = humidity_evt.relative_humidity;
+  uint16_t moisture3 = soilSensor3.touchRead(0);
 
   // Serial output
   Serial.print("Light: "); Serial.print(lux, 1);
   Serial.print(" lux  PAR: "); Serial.print(par, 2);
-  Serial.print("  Soil: "); Serial.print(moisture);
-  Serial.print("  Temp: "); Serial.print(tempC, 1);
-  Serial.println("C");
+  Serial.print("  Air: "); Serial.print(airTempC, 1);
+  Serial.print("C  RH: "); Serial.print(rh, 1);
+  Serial.println("%");
+  Serial.print("Soil 1: "); Serial.print(moisture1);
+  Serial.print("  Soil 2: "); Serial.print(moisture2);
+  Serial.print("  Soil 3: "); Serial.println(moisture3);
 
-  // Update display — Channel 0
-  muxSelect(MUX_CH_LIGHT_DISP);
-  updateDisplay(lux, par, moisture, tempC);
+  // Update display — Channel 2
+  muxSelect(MUX_CH_OLED);
+  updateDisplay(lux, par, moisture1, moisture2, moisture3, airTempC, rh);
 
   muxSelect(MUX_NONE);  // release all channels when idle
 

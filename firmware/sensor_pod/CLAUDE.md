@@ -1,6 +1,6 @@
 # Sensor Pod - ESP32-S3
 
-## Current Phase: Prototype - Getting Started
+## Current Phase: Prototype - All Sensors Working
 
 ---
 
@@ -55,10 +55,11 @@ PIO bin: C:\Users\egber\.platformio\penv\Scripts\pio.exe  (not in PATH)
 
 ## Hardware
 - Board: Adafruit ESP32-S3 Feather
-- Sensors (to be added incrementally):
-  - 3× Soil moisture (I2C 0x36) via PCA9546 multiplexer
-  - 1× SHT40 temp/humidity (I2C 0x44)
-  - 1× TSL2591 light sensor (I2C 0x29)
+- PCA9546 I2C Multiplexer (0x70)
+  - Ch0 (0x01): TSL2591 light sensor (0x29) → Soil sensor 1 (0x36)  [daisy-chained]
+  - Ch1 (0x02): Soil sensor 2 (0x36)
+  - Ch2 (0x04): SSD1306 OLED display 128×32 (0x3C)
+  - Ch3 (0x08): SHT40 temp/humidity (0x44) → Soil sensor 3 (0x36)  [daisy-chained]
 
 ## Development Approach
 Start simple, add complexity incrementally:
@@ -85,7 +86,7 @@ Start simple, add complexity incrementally:
 ## Current Status
 - [x] Blink test working
 - [x] One soil sensor reading
-- [x] I2C multiplexer integrated (PCA9546, Ch0=light+OLED, Ch1=soil)
-- [ ] All sensors reading (SHT40 + 2 more soil sensors on Ch2/Ch3)
+- [x] I2C multiplexer integrated (PCA9546)
+- [x] All sensors reading (TSL2591 + SHT40 + 3× soil + OLED display)
 - [ ] WiFi connection
 - [ ] MQTT publishing
