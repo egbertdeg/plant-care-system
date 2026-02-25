@@ -12,10 +12,12 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <WiFi.h>
 #include <Adafruit_TSL2591.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_seesaw.h>
 #include <Adafruit_SHT4x.h>
+#include "secrets.h"
 
 #define LED_PIN        13
 #define DISPLAY_WIDTH  128
@@ -163,6 +165,36 @@ void setup() {
     while (1) delay(100);
   }
   Serial.println("Soil sensor 3 found!");
+
+  // WiFi connection
+  muxSelect(MUX_CH_OLED);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("WiFi connecting...");
+  display.display();
+
+  Serial.print("Connecting to WiFi");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+
+  muxSelect(MUX_CH_OLED);
+  display.clearDisplay();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi connected: " + WiFi.localIP().toString());
+    display.setCursor(0, 0);  display.print("WiFi OK");
+    display.setCursor(0, 11); display.print(WiFi.localIP().toString());
+  } else {
+    Serial.println("\nWiFi failed - running sensors only");
+    display.setCursor(0, 0);  display.print("WiFi failed");
+    display.setCursor(0, 11); display.print("Sensors only");
+  }
+  display.display();
+  delay(2000);
 
   digitalWrite(LED_PIN, LOW);
   Serial.println("Setup complete.\n");

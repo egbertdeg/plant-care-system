@@ -1,6 +1,6 @@
 # Sensor Pod - ESP32-S3
 
-## Current Phase: Prototype - All Sensors Working
+## Current Phase: Prototype - WiFi Connected
 
 ---
 
@@ -88,5 +88,5 @@ Start simple, add complexity incrementally:
 - [x] One soil sensor reading
 - [x] I2C multiplexer integrated (PCA9546)
 - [x] All sensors reading (TSL2591 + SHT40 + 3× soil + OLED display)
-- [ ] WiFi connection
+- [x] WiFi connection
 - [ ] MQTT publishing
