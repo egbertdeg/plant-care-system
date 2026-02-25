@@ -1,5 +1,12 @@
 #pragma once
 
+// ─── Development mode ────────────────────────────────────────
+// Uncomment to enable dev mode:
+//   • Debug display (pressure, tilt, fill level, battery/MQTT)
+//   • Extended sleep timeout (10 min instead of 2 min)
+// Comment out before deploying.
+#define DEV_MODE
+
 // ─── Device identity ────────────────────────────────────────
 #define DEVICE_ID   "watering_can_001"
 
@@ -17,7 +24,7 @@
 
 // ─── Tilt detection ─────────────────────────────────────────
 // Angle from vertical (degrees). 0° = upright, 90° = on its side.
-#define POUR_ANGLE    45.0f   // tilt beyond this → watering event starts
+#define POUR_ANGLE    30.0f   // tilt beyond this → watering event starts
 #define STOP_ANGLE    15.0f   // tilt below this  → watering event ends
 
 // ─── Volume calibration ─────────────────────────────────────
@@ -41,6 +48,11 @@
 // Ignore events smaller than this (accidental tips, drips)
 #define MIN_VOLUME_ML  20.0f
 
+// Atmospheric pressure reference for water-remaining estimate.
+// Measure the sensor hPa reading when the can is completely empty and set this.
+// Standard atmosphere (1013.25) is a reasonable starting point.
+#define ATMOSPHERE_HPA  1013.0f
+
 // ─── Plant management ───────────────────────────────────────
 #define NUM_PLANTS          20      // plants 1-20 (plants 1-3 = soil sensor pods)
 #define HISTORY_SIZE        3       // watering volumes kept per plant (rolling avg)
@@ -54,7 +66,11 @@
 // Main loop delay — controls IMU polling rate (~10 Hz)
 #define LOOP_DELAY_MS       100
 // No activity for this long → enter deep sleep
-#define INACTIVITY_MS       120000UL    // 2 minutes
+#ifdef DEV_MODE
+  #define INACTIVITY_MS     600000UL   // 10 minutes (dev mode)
+#else
+  #define INACTIVITY_MS     120000UL   // 2 minutes (production)
+#endif
 // Publish status MQTT message this often while awake
 #define STATUS_INTERVAL_MS  30000UL     // 30 seconds
 
@@ -69,13 +85,10 @@
 #define WAKE_PIN  9
 
 // ─── Battery monitoring ─────────────────────────────────────
-// ESP32-S3 Feather: VBAT sense pin = GPIO35 (A13), through 2:1 divider.
-// VBAT = analogRead(A13) × (3.3 / 4095) × 2
-// Full: 4.2V, Empty: 3.3V → percent = (V - 3.3) / 0.9 × 100
-#define BATTERY_PIN       A13       // VBAT via 2:1 voltage divider
-#define BATTERY_DIVIDER   2.0f      // divider ratio (two equal resistors)
-#define VREF              3.3f      // ADC reference voltage
-#define ADC_MAX           4095.0f   // 12-bit ADC
+// Battery is read from the on-board MAX17048 fuel gauge IC (I2C 0x36).
+// The Adafruit ESP32-S3 Feather has NO analog VBAT pin — A13 maps to GPIO12
+// (a capacitive touch pin), NOT the battery rail. Do not use analogRead for battery.
+// MAX17048: cellVoltage() → float V,  cellPercent() → float % SoC
 
 // ─── NTP ────────────────────────────────────────────────────
 #define NTP_SERVER    "pool.ntp.org"

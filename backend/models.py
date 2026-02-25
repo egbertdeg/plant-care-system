@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Float, Integer, DateTime
+from typing import Optional
+from sqlalchemy import String, Float, Integer, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from database import Base
 
@@ -17,3 +18,36 @@ class SensorReading(Base):
     soil1:     Mapped[int]      = mapped_column(Integer)
     soil2:     Mapped[int]      = mapped_column(Integer)
     soil3:     Mapped[int]      = mapped_column(Integer)
+
+
+class Plant(Base):
+    """User-editable plant profile. id = plant_index on the watering can (1-20)."""
+    __tablename__ = "plants"
+
+    id:                   Mapped[int]             = mapped_column(Integer, primary_key=True)  # 1-based, matches device plant_index
+    name:                 Mapped[Optional[str]]   = mapped_column(String(128), nullable=True)
+    location:             Mapped[Optional[str]]   = mapped_column(String(128), nullable=True)
+    target_volume_ml:     Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    target_interval_days: Mapped[Optional[int]]   = mapped_column(Integer, nullable=True)
+    notes:                Mapped[Optional[str]]   = mapped_column(Text, nullable=True)
+    updated_at:           Mapped[datetime]        = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class WateringEvent(Base):
+    """Recorded watering from the watering can device."""
+    __tablename__ = "watering_events"
+
+    id:            Mapped[int]             = mapped_column(Integer, primary_key=True, autoincrement=True)
+    plant_index:   Mapped[int]             = mapped_column(Integer, index=True)
+    device_id:     Mapped[str]             = mapped_column(String(64))
+    volume_ml:     Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_s:    Mapped[Optional[int]]   = mapped_column(Integer, nullable=True)
+    avg_volume_ml: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    timestamp:     Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at:   Mapped[datetime]        = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )

@@ -28,11 +28,52 @@ REST API (public)
 
 ## API Endpoints
 
+### Sensor pod
+
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Health check |
-| GET | `/readings/latest` | Most recent reading (any device) |
-| GET | `/readings?device_id=sensor_pod_001&limit=100` | Reading history |
+| GET | `/readings/latest` | Most recent sensor reading |
+| GET | `/readings?device_id=sensor_pod_001&limit=100` | Sensor reading history |
+
+### Plant profiles
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/plants` | All plants with last watering + schedule status |
+| GET | `/plants/{id}` | Single plant (id = 1-20) |
+| PUT | `/plants/{id}` | Create / update plant profile |
+
+**`PUT /plants/{id}` body** (all fields optional, only supplied fields are updated):
+```json
+{
+  "name": "Monstera",
+  "location": "Living room",
+  "target_volume_ml": 250,
+  "target_interval_days": 7,
+  "notes": "Likes indirect light"
+}
+```
+
+**`GET /plants` response includes derived fields:**
+```json
+{
+  "id": 3,
+  "name": "Monstera",
+  "target_volume_ml": 250,
+  "target_interval_days": 7,
+  "last_watered": "2026-02-20T10:30:00+00:00",
+  "days_since_water": 5,
+  "needs_water": false
+}
+```
+
+### Watering history
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/waterings?limit=50` | All recent watering events |
+| GET | `/plants/{id}/waterings?limit=20` | Watering history for one plant |
 
 **Example response (`/readings/latest`):**
 ```json
@@ -52,7 +93,9 @@ REST API (public)
 
 ## Data Model
 
-Readings are 2-minute averages published by the sensor pod (60 samples × 2s).
+### `sensor_readings`
+
+2-minute averages published by the sensor pod (60 samples × 2s).
 
 | Field | Type | Description |
 |---|---|---|
@@ -61,6 +104,33 @@ Readings are 2-minute averages published by the sensor pod (60 samples × 2s).
 | `temp` | float | °C (SHT40) |
 | `humidity` | float | % RH (SHT40) |
 | `soil1/2/3` | int | Capacitive moisture (Adafruit STEMMA) |
+
+### `plants`
+
+User-maintained plant profiles. `id` = `plant_index` on the watering can (1–20).
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | int | Plant index 1-20 (matches watering can) |
+| `name` | str? | Display name |
+| `location` | str? | Room / shelf |
+| `target_volume_ml` | float? | Desired pour volume |
+| `target_interval_days` | int? | Days between waterings |
+| `notes` | str? | Free text |
+
+### `watering_events`
+
+One row per watering event published by the watering can.
+
+| Field | Type | Description |
+|---|---|---|
+| `plant_index` | int | Which plant was watered (1-20) |
+| `device_id` | str | Source device |
+| `volume_ml` | float? | Volume dispensed (null until MPRLS installed) |
+| `duration_s` | int? | Pour duration |
+| `avg_volume_ml` | float? | Rolling avg from device NVS |
+| `timestamp` | datetime? | Device NTP timestamp |
+| `received_at` | datetime | Server receive time (always set) |
 
 ## Railway Deployment
 

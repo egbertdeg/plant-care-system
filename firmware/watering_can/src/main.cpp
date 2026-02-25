@@ -37,6 +37,7 @@
 #include <Adafruit_LSM6DS3TRC.h>
 #include <Adafruit_MPRLS.h>
 #include <Adafruit_SSD1306.h>
+#include <Adafruit_MAX1704X.h>
 #include <ArduinoOTA.h>
 #include <Preferences.h>
 #include <esp_sleep.h>
@@ -52,6 +53,7 @@
 Adafruit_LSM6DS3TRC imu;
 Adafruit_MPRLS      mprls(-1, -1);    // no reset/EOC pins
 Adafruit_SSD1306    display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &Wire, -1);
+Adafruit_MAX17048   maxlipo;          // on-board battery fuel gauge (I2C 0x36)
 Preferences         prefs;
 
 // ════════════════════════════════════════════════════════════
@@ -91,9 +93,10 @@ unsigned long settleStartMs  = 0;
 unsigned long lastActivityMs = 0;
 unsigned long lastStatusMs   = 0;
 
-bool oledPresent  = false;
-bool mprlsPresent = false;   // non-fatal: volume measurement disabled without sensor
-bool ntpSynced    = false;
+bool oledPresent   = false;
+bool mprlsPresent  = false;   // non-fatal: volume measurement disabled without sensor
+bool maxlipoPresent = false;  // non-fatal: MAX17048 fuel gauge (on-board I2C chip)
+bool ntpSynced     = false;
 
 // Tap detection window
 bool          tapPending   = false;
@@ -125,13 +128,13 @@ void setupTapDetection() {
     //   0x8F = 1000_1111
     imuWriteReg(LSM6DS3_TAP_CFG, 0x8F);
 
-    // TAP_THS_6D (0x59): threshold mid-range (~375mg at ±2g)
-    //   0x8C = 1000_1100
-    imuWriteReg(LSM6DS3_TAP_THS_6D, 0x8C);
+    // TAP_THS_6D (0x59): tap threshold — bits[4:0] = TAP_THS, D4D_EN cleared
+    //   0x04 = threshold 4/32 × 2g ≈ 250mg  (was 0x8C = 750mg, too insensitive)
+    imuWriteReg(LSM6DS3_TAP_THS_6D, 0x04);
 
-    // INT_DUR2 (0x5A): DUR=3 (~920ms double-tap window) | QUIET=2 (~77ms) | SHOCK=1 (~77ms)
-    //   0x39 = 0011_1001
-    imuWriteReg(LSM6DS3_INT_DUR2, 0x39);
+    // INT_DUR2 (0x5A): DUR=7 | QUIET=3 | SHOCK=3  (max windows for reliability)
+    //   0x7F = 0111_1111
+    imuWriteReg(LSM6DS3_INT_DUR2, 0x7F);
 
     // WAKE_UP_THS (0x5B): SINGLE_DOUBLE_TAP enable (bit 7)
     imuWriteReg(LSM6DS3_WAKE_UP_THS, 0x80);
@@ -141,6 +144,15 @@ void setupTapDetection() {
     imuWriteReg(LSM6DS3_MD1_CFG, 0x48);
 
     Serial.printf("Tap detection configured → INT1 on GPIO%d\n", WAKE_PIN);
+
+#ifdef DEV_MODE
+    // Read back all tap registers to verify writes took effect
+    Serial.printf("  TAP_CFG    (0x58) = 0x%02X  (expected 0x8F)\n", imuReadReg(LSM6DS3_TAP_CFG));
+    Serial.printf("  TAP_THS_6D (0x59) = 0x%02X  (expected 0x04)\n", imuReadReg(LSM6DS3_TAP_THS_6D));
+    Serial.printf("  INT_DUR2   (0x5A) = 0x%02X  (expected 0x7F)\n", imuReadReg(LSM6DS3_INT_DUR2));
+    Serial.printf("  WAKE_UP_THS(0x5B) = 0x%02X  (expected 0x80)\n", imuReadReg(LSM6DS3_WAKE_UP_THS));
+    Serial.printf("  MD1_CFG    (0x5E) = 0x%02X  (expected 0x48)\n", imuReadReg(LSM6DS3_MD1_CFG));
+#endif
 }
 
 
@@ -247,44 +259,88 @@ void flushBufferedEvents() {
 // Display helpers (128×32, 4 rows at textSize 1: y = 0, 8, 16, 24)
 // ════════════════════════════════════════════════════════════
 
-void updateDisplayIdle(float pressureHpa, float battV) {
+void updateDisplayIdle() {
     if (!oledPresent) return;
     PlantRecord rec = loadPlant(currentPlant);
-
-    int  daysAgo   = 0;
-    bool needsWater = false;
-    if (rec.lastTs > 0 && ntpSynced) {
-        daysAgo    = (int)((time(nullptr) - (time_t)rec.lastTs) / 86400L);
-        needsWater = (daysAgo >= NEEDS_WATER_DAYS);
-    }
-
-    int battPct = constrain((int)((battV - 3.3f) / 0.9f * 100.0f), 0, 100);
 
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
     display.setTextSize(1);
 
-    // Row 0: plant number + dry indicator
+    // Row 0: plant number
     display.setCursor(0, 0);
-    display.printf("Plant %d/20%s", currentPlant + 1, needsWater ? " *DRY*" : "");
+    display.printf("Plant %d / %d", currentPlant + 1, NUM_PLANTS);
 
-    // Row 1: pressure
+    // Row 1: last watering
     display.setCursor(0, 8);
-    display.printf("P: %.1f hPa", pressureHpa);
+    if (rec.lastTs > 0) {
+        if (ntpSynced) {
+            int daysAgo = (int)((time(nullptr) - (time_t)rec.lastTs) / 86400L);
+            if (daysAgo == 0) display.print("Watered: today");
+            else              display.printf("Watered: %dd ago", daysAgo);
+        } else {
+            time_t t = (time_t)rec.lastTs;
+            struct tm* ti = localtime(&t);
+            char buf[10];
+            strftime(buf, sizeof(buf), "%d %b", ti);
+            display.printf("Last: %s", buf);
+        }
+    } else {
+        display.print("Never watered");
+    }
 
-    // Row 2: battery
+    // Row 2: estimated water remaining (requires MPRLS)
     display.setCursor(0, 16);
-    display.printf("Bat: %.2fV  %d%%", battV, battPct);
+    if (mprlsPresent) {
+        float waterMl = max(0.0f, (pressureUpright - ATMOSPHERE_HPA) * ML_PER_HPA);
+        display.printf("Water: ~%.0fml", waterMl);
+    } else {
+        display.print("Water: ---");
+    }
 
-    // Row 3: MQTT status + days since last water
+    // Row 3: average pour volume (from history)
     display.setCursor(0, 24);
-    if (rec.lastTs > 0 && ntpSynced)
-        display.printf("%s  %dd ago", mqtt.connected() ? "OK" : "--", daysAgo);
-    else
-        display.printf("MQTT: %s", mqtt.connected() ? "OK" : "--");
+    float avg = plantAvgVolume(rec);
+    if (avg > 0.0f)
+        display.printf("Avg: %.0fml/water", avg);
 
     display.display();
 }
+
+#ifdef DEV_MODE
+void updateDisplayDev(float pressure, float tilt) {
+    if (!oledPresent) return;
+    const char* stateStr = (state == IDLE)     ? "IDLE" :
+                           (state == POURING)  ? "POUR" :
+                           (state == SETTLING) ? "SETL" : "REPT";
+    float fillMl = mprlsPresent
+        ? max(0.0f, (pressure - ATMOSPHERE_HPA) * ML_PER_HPA)
+        : 0.0f;
+
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+
+    // Row 0: current plant
+    display.setCursor(0,  0);
+    display.printf("Plant %d / %d", currentPlant + 1, NUM_PLANTS);
+
+    // Row 1: raw pressure
+    display.setCursor(0,  8);
+    display.printf("P: %.1f hPa", pressure);
+
+    // Row 2: tilt angle + state machine
+    display.setCursor(0, 16);
+    display.printf("Tilt: %.1f  [%s]", tilt, stateStr);
+
+    // Row 3: fill level (gauge pressure → ml)
+    display.setCursor(0, 24);
+    if (mprlsPresent) display.printf("Fill: ~%.0f ml", fillMl);
+    else              display.print("Fill: -- (no MPRLS)");
+
+    display.display();
+}
+#endif
 
 void updateDisplayPouring(float pressureHpa, unsigned long elapsedMs) {
     if (!oledPresent) return;
@@ -338,36 +394,67 @@ float readTiltDegrees() {
     return acosf(constrain(az / mag, -1.0f, 1.0f)) * 180.0f / PI;
 }
 
+// Returns battery voltage from the MAX17048 fuel gauge (I2C 0x36).
+// The ESP32-S3 Feather has NO analog VBAT pin — the fuel gauge is the only
+// way to read battery on this board. A13 on ESP32-S3 maps to GPIO12 (touch),
+// not VBAT like it did on the original ESP32 Feather.
 float readBatteryV() {
-    int raw = analogRead(BATTERY_PIN);
-    return raw * (VREF / ADC_MAX) * BATTERY_DIVIDER;
+    if (maxlipoPresent) return maxlipo.cellVoltage();
+    return 0.0f;
+}
+
+int readBatteryPct() {
+    if (maxlipoPresent) return constrain((int)maxlipo.cellPercent(), 0, 100);
+    return -1;   // unknown
 }
 
 // Poll LSM6DS3 TAP_SRC register and update tap state.
 // With LIR=1, the latch is cleared when TAP_SRC is read.
-// Single tap: sets tapPending, starts 600ms window.
-// Double tap (detected before window expires): upgrades tapIsDouble.
+//
+// Hardware DOUBLE_TAP (bit 4) is unreliable in polling mode: reading the register
+// between the two taps clears the latch before the chip can combine them. We use
+// software double-tap detection instead: a second SINGLE_TAP within 600ms of the
+// first is treated as a double tap.
+//
+// Hardware DOUBLE_TAP (bit 4) is still checked first in case the chip fires it
+// when both taps happen between two consecutive polls (< 100ms apart).
 void pollTapDetection() {
     uint8_t tapSrc = imuReadReg(LSM6DS3_TAP_SRC);
-    if (!(tapSrc & 0x40)) return;   // TAP_IA not set
+
+#ifdef DEV_MODE
+    // Log TAP_SRC at 1Hz so we can see if it ever goes non-zero
+    static unsigned long lastTapLog = 0;
+    if (millis() - lastTapLog >= 1000 || tapSrc != 0) {
+        lastTapLog = millis();
+        Serial.printf("TAP_SRC=0x%02X\n", tapSrc);
+    }
+#endif
+
+    if (!(tapSrc & 0x30)) return;   // neither SINGLE_TAP (bit5) nor DOUBLE_TAP (bit4) set
+                                    // Note: TAP_IA (bit6) is not set on LSM6DS3TRC in polling mode
 
     lastActivityMs = millis();
 
     if (tapSrc & 0x10) {
-        // DOUBLE_TAP detected — upgrade if window open, or start new
+        // Hardware DOUBLE_TAP detected (both taps between consecutive polls)
         tapIsDouble  = true;
         tapPending   = true;
         tapPendingMs = millis();
-        Serial.println("Tap: DOUBLE detected");
+        Serial.println("Tap: DOUBLE (HW)");
     } else if (tapSrc & 0x20) {
         // SINGLE_TAP detected
-        if (!tapPending) {
+        if (tapPending && !tapIsDouble && millis() - tapPendingMs < 600) {
+            // Second tap within window → software double-tap upgrade
+            tapIsDouble  = true;
+            tapPendingMs = millis();   // restart window so processTap waits for this moment
+            Serial.println("Tap: DOUBLE (SW)");
+        } else if (!tapPending) {
             tapIsDouble  = false;
             tapPending   = true;
             tapPendingMs = millis();
-            Serial.println("Tap: SINGLE detected");
+            Serial.println("Tap: SINGLE");
         }
-        // If tapPending already set, we're inside the double-tap window — do nothing
+        // If tapPending && tapIsDouble already: ignore (double already committed)
     }
 }
 
@@ -452,7 +539,7 @@ void publishStatus() {
     if (!mqtt.connected()) return;
     float battV    = readBatteryV();
     float pressure = mprlsPresent ? mprls.readPressure() : 0.0f;
-    int   battPct  = constrain((int)((battV - 3.3f) / 0.9f * 100.0f), 0, 100);
+    int   battPct  = readBatteryPct();
 
     PlantRecord rec = loadPlant(currentPlant);
     int daysSince = 0;
@@ -493,6 +580,29 @@ void enterDeepSleep() {
     // Wake when INT1 (GPIO WAKE_PIN) goes HIGH (tap detected by IMU)
     esp_sleep_enable_ext1_wakeup(1ULL << WAKE_PIN, ESP_EXT1_WAKEUP_ANY_HIGH);
     esp_deep_sleep_start();
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Startup status screen (battery + MQTT — shown once after boot)
+// ════════════════════════════════════════════════════════════
+
+void showStartupStatus() {
+    if (!oledPresent) return;
+    float battV   = readBatteryV();
+    int   battPct = readBatteryPct();
+
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0,  0); display.print("Watering Can v2");
+    display.setCursor(0,  8);
+    if (battPct >= 0) display.printf("Bat: %.2fV  %d%%", battV, battPct);
+    else              display.print("Bat: no gauge");
+    display.setCursor(0, 16); display.printf("MQTT: %s", mqtt.connected() ? "OK" : "offline");
+    display.setCursor(0, 24); display.printf("NTP:  %s", ntpSynced ? "OK" : "--");
+    display.display();
+    delay(3000);
 }
 
 
@@ -549,6 +659,17 @@ void setup() {
         display.display();
     } else {
         Serial.println("OLED not found — display disabled (OK, not installed yet)");
+    }
+
+    // ── Battery fuel gauge (non-fatal — MAX17048 at 0x36) ─────
+    // The ESP32-S3 Feather has no analog VBAT pin; the fuel gauge is the only
+    // way to read battery voltage/percentage on this board.
+    maxlipoPresent = maxlipo.begin();
+    if (maxlipoPresent) {
+        Serial.printf("MAX17048 fuel gauge found! %.2fV  %.0f%%\n",
+                      maxlipo.cellVoltage(), maxlipo.cellPercent());
+    } else {
+        Serial.println("MAX17048 not found — battery monitoring disabled");
     }
 
     // ── NVS: load saved plant selection ──────────────────────
@@ -612,8 +733,10 @@ void setup() {
     lastStatusMs   = millis();
 
     digitalWrite(LED_BUILTIN, LOW);
+
     Serial.printf("Setup complete. ML_PER_HPA=%.1f  Plant=%d\n\n",
                   (float)ML_PER_HPA, currentPlant + 1);
+    showStartupStatus();
 }
 
 
@@ -649,9 +772,13 @@ void loop() {
                 }
             }
 
-            Serial.printf("IDLE  tilt=%.1f°  P=%.2f hPa  bat=%.2fV  plant=%d\n",
-                          tilt, pressure, battV, currentPlant + 1);
-            updateDisplayIdle(pressure, battV);
+            Serial.printf("IDLE  tilt=%.1f°  P=%.2f hPa  bat=%.2fV(%d%%)  plant=%d\n",
+                          tilt, pressure, battV, readBatteryPct(), currentPlant + 1);
+#ifdef DEV_MODE
+            updateDisplayDev(pressure, tilt);
+#else
+            updateDisplayIdle();
+#endif
 
             if (tilt > POUR_ANGLE) {
                 pressureStart  = pressureUpright;   // snapshot last stable reading
