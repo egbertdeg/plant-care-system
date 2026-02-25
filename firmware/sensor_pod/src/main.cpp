@@ -21,6 +21,7 @@
 #include <Adafruit_seesaw.h>
 #include <Adafruit_SHT4x.h>
 #include "secrets.h"
+#include <ArduinoOTA.h>
 
 #define LED_PIN        13
 #define DISPLAY_WIDTH  128
@@ -49,6 +50,12 @@ Adafruit_seesaw soilSensor1;
 Adafruit_seesaw soilSensor2;
 Adafruit_seesaw soilSensor3;
 Adafruit_SHT4x sht4;
+
+// 2-minute averaging accumulators (60 samples × 2 s = 120 s)
+static float    sumLux = 0, sumPar = 0, sumTemp = 0, sumRH = 0;
+static uint32_t sumSoil1 = 0, sumSoil2 = 0, sumSoil3 = 0;
+static int      sampleCount = 0;
+const  int      PUBLISH_SAMPLES = 60;
 
 void muxSelect(uint8_t channel) {
   Wire.beginTransmission(MUX_ADDR);
@@ -236,12 +243,21 @@ void setup() {
     delay(2000);
   }
 
+  // OTA updates
+  if (WiFi.status() == WL_CONNECTED) {
+    ArduinoOTA.setHostname("sensor_pod_001");
+    ArduinoOTA.begin();
+    Serial.println("OTA ready at sensor_pod_001.local");
+  }
+
   digitalWrite(LED_PIN, LOW);
   Serial.println("Setup complete.\n");
   delay(1000);
 }
 
 void loop() {
+  ArduinoOTA.handle();
+
   // Keep MQTT alive and reconnect if dropped
   if (WiFi.status() == WL_CONNECTED) {
     if (!mqtt.connected()) connectMQTT();
@@ -286,21 +302,30 @@ void loop() {
 
   muxSelect(MUX_NONE);  // release all channels when idle
 
-  // Publish to MQTT
-  if (mqtt.connected()) {
+  // Accumulate for 2-minute average
+  sumLux   += lux;  sumPar  += par;
+  sumTemp  += airTempC;  sumRH += rh;
+  sumSoil1 += moisture1;  sumSoil2 += moisture2;  sumSoil3 += moisture3;
+  sampleCount++;
+
+  if (sampleCount >= PUBLISH_SAMPLES && mqtt.connected()) {
     JsonDocument doc;
-    doc["light"]    = round(lux * 10) / 10.0;
-    doc["par"]      = round(par * 100) / 100.0;
-    doc["temp"]     = round(airTempC * 10) / 10.0;
-    doc["humidity"] = round(rh * 10) / 10.0;
-    doc["soil1"]    = moisture1;
-    doc["soil2"]    = moisture2;
-    doc["soil3"]    = moisture3;
+    doc["light"]    = round((sumLux  / sampleCount) * 10)  / 10.0;
+    doc["par"]      = round((sumPar  / sampleCount) * 100) / 100.0;
+    doc["temp"]     = round((sumTemp / sampleCount) * 10)  / 10.0;
+    doc["humidity"] = round((sumRH   / sampleCount) * 10)  / 10.0;
+    doc["soil1"]    = (int)round((float)sumSoil1 / sampleCount);
+    doc["soil2"]    = (int)round((float)sumSoil2 / sampleCount);
+    doc["soil3"]    = (int)round((float)sumSoil3 / sampleCount);
 
     char payload[200];
     serializeJson(doc, payload);
     mqtt.publish("plant/sensor_pod_001/sensors", payload);
-    Serial.print("MQTT published: "); Serial.println(payload);
+    Serial.print("MQTT published (2min avg): "); Serial.println(payload);
+
+    sumLux = sumPar = sumTemp = sumRH = 0;
+    sumSoil1 = sumSoil2 = sumSoil3 = 0;
+    sampleCount = 0;
   }
 
   delay(2000);
