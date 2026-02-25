@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     mqtt_client.disconnect()
 
 
-app = FastAPI(title="Plant Care API", lifespan=lifespan)
+app = FastAPI(title="Plant Care API", version="2.0", lifespan=lifespan)
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
