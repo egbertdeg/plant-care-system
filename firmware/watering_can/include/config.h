@@ -4,13 +4,16 @@
 #define DEVICE_ID   "watering_can_001"
 
 // ─── MQTT topics ────────────────────────────────────────────
+// App → device:  {"plant_index": 3}   (1-based, selects current plant)
+// Device → app:  {"device_id":..., "plant_index":..., "volume_ml":..., ...}
 #define TOPIC_SET_PLANT  "plant/watering_can_001/set_plant"
 #define TOPIC_EVENT      "plant/watering_can_001/event"
+#define TOPIC_STATUS     "plant/watering_can_001/status"
 
 // ─── I2C addresses ──────────────────────────────────────────
 #define I2C_IMU      0x6A   // LSM6DS3 (alt: 0x6B if SDO pulled high)
 #define I2C_PRESSURE 0x18   // MPRLS
-#define I2C_OLED     0x3C   // SSD1306 128×64 (not installed yet)
+#define I2C_OLED     0x3C   // SSD1306 128×32 (not installed yet)
 
 // ─── Tilt detection ─────────────────────────────────────────
 // Angle from vertical (degrees). 0° = upright, 90° = on its side.
@@ -38,16 +41,59 @@
 // Ignore events smaller than this (accidental tips, drips)
 #define MIN_VOLUME_ML  20.0f
 
+// ─── Plant management ───────────────────────────────────────
+#define NUM_PLANTS          20      // plants 1-20 (plants 1-3 = soil sensor pods)
+#define HISTORY_SIZE        3       // watering volumes kept per plant (rolling avg)
+#define MAX_BUFFERED_EVENTS 20      // offline events stored in NVS while WiFi down
+#define NEEDS_WATER_DAYS    7       // flag plant as "dry" if not watered in N days
+
 // ─── Timing ─────────────────────────────────────────────────
 // After the can returns upright, wait this long before recording
 // the end pressure (lets water settle and sloshing stop).
-#define SETTLE_MS      2000
+#define SETTLE_MS           2000
+// Main loop delay — controls IMU polling rate (~10 Hz)
+#define LOOP_DELAY_MS       100
+// No activity for this long → enter deep sleep
+#define INACTIVITY_MS       120000UL    // 2 minutes
+// Publish status MQTT message this often while awake
+#define STATUS_INTERVAL_MS  30000UL     // 30 seconds
 
-// Main loop delay — controls IMU polling rate (10 Hz)
-#define LOOP_DELAY_MS  100
+// ─── Refill detection ───────────────────────────────────────
+// If upright pressure increases by more than this between readings,
+// treat it as a refill and update the baseline (don't count as pour).
+#define REFILL_THRESHOLD_HPA  2.0f      // tune during calibration
+
+// ─── Deep sleep wake pin ────────────────────────────────────
+// Connect IMU INT1 → GPIO9. Tap wakes the device from deep sleep.
+// Wire: LSM6DS3 INT1 pin → ESP32-S3 GPIO9 (with 10kΩ pull-down to GND)
+#define WAKE_PIN  9
+
+// ─── Battery monitoring ─────────────────────────────────────
+// ESP32-S3 Feather: VBAT sense pin = GPIO35 (A13), through 2:1 divider.
+// VBAT = analogRead(A13) × (3.3 / 4095) × 2
+// Full: 4.2V, Empty: 3.3V → percent = (V - 3.3) / 0.9 × 100
+#define BATTERY_PIN       A13       // VBAT via 2:1 voltage divider
+#define BATTERY_DIVIDER   2.0f      // divider ratio (two equal resistors)
+#define VREF              3.3f      // ADC reference voltage
+#define ADC_MAX           4095.0f   // 12-bit ADC
+
+// ─── NTP ────────────────────────────────────────────────────
+#define NTP_SERVER    "pool.ntp.org"
+#define NTP_OFFSET_S  0     // UTC offset in seconds; e.g. -18000 for EST
+
+// ─── LSM6DS3 tap detection registers ────────────────────────
+// These registers are not exposed by the Adafruit library.
+// Written directly via I2C in setupTapDetection().
+#define LSM6DS3_TAP_CFG      0x58   // tap config (axes enable, LIR)
+#define LSM6DS3_TAP_THS_6D   0x59   // tap threshold
+#define LSM6DS3_INT_DUR2     0x5A   // tap duration / quiet / shock timings
+#define LSM6DS3_WAKE_UP_THS  0x5B   // single+double tap enable
+#define LSM6DS3_MD1_CFG      0x5E   // route to INT1
+#define LSM6DS3_TAP_SRC      0x1C   // read tap event (TAP_IA, DOUBLE_TAP, SINGLE_TAP)
 
 // ─── OLED display ───────────────────────────────────────────
-// 128×64 SSD1306. Not physically installed yet.
-// Initialization is non-fatal; all display calls are guarded by oledPresent.
+// 128×32 SSD1306. Non-fatal if not installed.
+// All display calls are guarded by oledPresent flag.
+// When OLED is added, solder to the IMU I2C pads (SDO connects via same STEMMA chain).
 #define DISPLAY_WIDTH   128
-#define DISPLAY_HEIGHT   64
+#define DISPLAY_HEIGHT   32
