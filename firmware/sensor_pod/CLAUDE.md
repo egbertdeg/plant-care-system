@@ -1,6 +1,6 @@
 # Sensor Pod - ESP32-S3
 
-## Current Phase: Prototype - WiFi Connected
+## Current Phase: Prototype - COMPLETE
 
 ---
 
@@ -89,4 +89,4 @@ Start simple, add complexity incrementally:
 - [x] I2C multiplexer integrated (PCA9546)
 - [x] All sensors reading (TSL2591 + SHT40 + 3× soil + OLED display)
 - [x] WiFi connection
-- [ ] MQTT publishing
+- [x] MQTT publishing (HiveMQ Cloud, TLS, JSON to plant/sensor_pod_001/sensors)

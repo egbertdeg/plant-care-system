@@ -13,6 +13,9 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <Adafruit_TSL2591.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_seesaw.h>
@@ -36,6 +39,9 @@
 // Valid for sunlight and white LEDs. Varies significantly by source spectrum.
 // Use a dedicated quantum sensor (e.g. Apogee SQ-520) for accuracy.
 #define PAR_PER_LUX  0.0185f
+
+WiFiClientSecure wifiSecure;
+PubSubClient mqtt(wifiSecure);
 
 Adafruit_TSL2591 tsl = Adafruit_TSL2591(2591);
 Adafruit_SSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &Wire, -1);
@@ -86,6 +92,20 @@ void updateDisplay(float lux, float par,
   display.print(m3);
 
   display.display();
+}
+
+void connectMQTT() {
+  Serial.print("Connecting to MQTT");
+  int attempts = 0;
+  while (!mqtt.connected() && attempts < 5) {
+    if (mqtt.connect("sensor_pod_001", MQTT_USER, MQTT_PASSWORD)) {
+      Serial.println(" connected!");
+    } else {
+      Serial.print(" failed ("); Serial.print(mqtt.state()); Serial.println("), retrying...");
+      delay(2000);
+      attempts++;
+    }
+  }
 }
 
 void setup() {
@@ -196,12 +216,38 @@ void setup() {
   display.display();
   delay(2000);
 
+  // MQTT connection (TLS, skip cert verification for prototype)
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiSecure.setInsecure();
+    mqtt.setServer(MQTT_HOST, MQTT_PORT);
+    connectMQTT();
+
+    muxSelect(MUX_CH_OLED);
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    if (mqtt.connected()) {
+      display.print("MQTT OK");
+    } else {
+      display.print("MQTT failed");
+      display.setCursor(0, 11);
+      display.print("Sensors only");
+    }
+    display.display();
+    delay(2000);
+  }
+
   digitalWrite(LED_PIN, LOW);
   Serial.println("Setup complete.\n");
   delay(1000);
 }
 
 void loop() {
+  // Keep MQTT alive and reconnect if dropped
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!mqtt.connected()) connectMQTT();
+    mqtt.loop();
+  }
+
   // Read light sensor + soil sensor 1 — Channel 0
   muxSelect(MUX_CH_TSL_SOIL1);
   uint32_t lum = tsl.getFullLuminosity();
@@ -239,6 +285,23 @@ void loop() {
   updateDisplay(lux, par, moisture1, moisture2, moisture3, airTempC, rh);
 
   muxSelect(MUX_NONE);  // release all channels when idle
+
+  // Publish to MQTT
+  if (mqtt.connected()) {
+    JsonDocument doc;
+    doc["light"]    = round(lux * 10) / 10.0;
+    doc["par"]      = round(par * 100) / 100.0;
+    doc["temp"]     = round(airTempC * 10) / 10.0;
+    doc["humidity"] = round(rh * 10) / 10.0;
+    doc["soil1"]    = moisture1;
+    doc["soil2"]    = moisture2;
+    doc["soil3"]    = moisture3;
+
+    char payload[200];
+    serializeJson(doc, payload);
+    mqtt.publish("plant/sensor_pod_001/sensors", payload);
+    Serial.print("MQTT published: "); Serial.println(payload);
+  }
 
   delay(2000);
 }
