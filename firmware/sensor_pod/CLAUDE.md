@@ -1,92 +1,107 @@
 # Sensor Pod - ESP32-S3
 
-## Current Phase: Prototype - COMPLETE
+## Current Phase: Complete — OTA enabled
 
 ---
 
-## ESP32-S3 Upload Process (CRITICAL - READ FIRST)
+## Upload Methods
 
-**Board:** Adafruit ESP32-S3 Feather (native USB - no UART chip)
+### OTA (normal workflow — no USB needed)
 
-**Key Issue:** Native USB means standard auto-reset does NOT work. Must manually enter bootloader mode every upload.
+```bash
+pio run -e adafruit_feather_esp32s3_ota -t upload
+```
 
-### Upload Workflow (Every Time)
+- Target: `192.168.1.207` (device IP, set in `platformio.ini`)
+- mDNS hostname `sensor_pod_001.local` resolves correctly but OTA via hostname is unreliable on Windows — use IP directly
+- Windows Firewall can block the OTA callback port; using IP directly bypasses this
+
+### USB (first-time flash or if OTA fails)
+
+**Board:** Adafruit ESP32-S3 Feather (native USB — no UART chip, manual bootloader required)
 
 1. **Enter bootloader mode:**
-   - Hold **BOOT** button
-   - Press and release **RESET** button
-   - Release **BOOT** button
-   - Board switches to COM5 (bootloader mode)
+   - Hold **BOOT** → press+release **RESET** → release **BOOT**
+   - Board enumerates as COM5
 
-2. **Run upload:**
-   - PlatformIO uploads to COM5
-   - Uses `--before=no_reset` flag (board already in bootloader)
+2. **Upload:**
+   ```bash
+   pio run -e adafruit_feather_esp32s3 -t upload
+   ```
 
 3. **Start firmware:**
-   - Press **RESET** once
-   - Board switches back to COM4 (normal mode)
-   - Firmware runs, serial monitor on COM4
-
-### platformio.ini Settings
-
-```ini
-upload_port = COM5        ; bootloader mode port
-monitor_port = COM4       ; normal run mode port
-upload_flags =
-    --before=no_reset     ; skip auto-reset, board already in bootloader
-    --after=hard_reset
-```
+   - Press **RESET** once → board switches to COM4 → firmware runs
 
 ### COM Port Reference
 
-- **COM3** = Intel AMT (laptop built-in — ignore)
-- **COM4** = ESP32 normal/run mode → serial monitor here
-- **COM5** = ESP32 bootloader mode → upload here (only appears after BOOT+RESET)
+| Port | Mode |
+|---|---|
+| COM3 | Intel AMT (laptop built-in — ignore) |
+| COM4 | ESP32 normal/run mode → serial monitor |
+| COM5 | ESP32 bootloader mode → USB upload (only after BOOT+RESET) |
 
-### Quick Reference
+### platformio.ini Environments
 
+```ini
+[env:adafruit_feather_esp32s3]      ; USB upload
+upload_port = COM5
+upload_flags = --before=no_reset --after=hard_reset
+
+[env:adafruit_feather_esp32s3_ota]  ; OTA upload
+upload_protocol = espota
+upload_port = 192.168.1.207
 ```
-Upload:  BOOT+RESET → pio upload → RESET
-Monitor: pio device monitor --port COM4
-PIO bin: C:\Users\egber\.platformio\penv\Scripts\pio.exe  (not in PATH)
+
+### Serial Monitor
+
+```bash
+~/.platformio/penv/Scripts/pio device monitor --port COM4 --baud 115200
 ```
 
 ---
 
 ## Hardware
+
 - Board: Adafruit ESP32-S3 Feather
 - PCA9546 I2C Multiplexer (0x70)
-  - Ch0 (0x01): TSL2591 light sensor (0x29) → Soil sensor 1 (0x36)  [daisy-chained]
+  - Ch0 (0x01): TSL2591 light sensor (0x29) → Soil sensor 1 (0x36) [daisy-chained]
   - Ch1 (0x02): Soil sensor 2 (0x36)
-  - Ch2 (0x04): SSD1306 OLED display 128×32 (0x3C)
-  - Ch3 (0x08): SHT40 temp/humidity (0x44) → Soil sensor 3 (0x36)  [daisy-chained]
+  - Ch2 (0x04): SSD1306 OLED 128×32 (0x3C)
+  - Ch3 (0x08): SHT40 temp/humidity (0x44) → Soil sensor 3 (0x36) [daisy-chained]
 
-## Development Approach
-Start simple, add complexity incrementally:
-1. Week 1: Blink test, then ONE soil sensor
-2. Week 2: Add multiplexer + all 3 soil sensors
-3. Week 3: Add temp/humidity and light sensors
-4. Week 4: Add WiFi + MQTT connectivity
+---
 
-## MQTT Topics (Future)
-- `plant/sensor_pod_001/moisture/plant_1`
-- `plant/sensor_pod_001/moisture/plant_2`
-- `plant/sensor_pod_001/moisture/plant_3`
-- `plant/sensor_pod_001/temperature`
-- `plant/sensor_pod_001/humidity`
-- `plant/sensor_pod_001/light`
+## Behaviour
+
+- Reads sensors every **2 seconds**, updates OLED each cycle
+- Accumulates 60 samples, publishes **2-minute average** to MQTT
+- MQTT topic: `plant/sensor_pod_001/sensors` (single JSON payload)
+- OTA hostname: `sensor_pod_001.local` (ArduinoOTA)
+
+**Actual MQTT topic** (not per-sensor topics as originally planned):
+```
+plant/sensor_pod_001/sensors  →  {"light":...,"par":...,"temp":...,"humidity":...,"soil1":...,"soil2":...,"soil3":...}
+```
+
+---
 
 ## Coding Style
+
 - Arduino framework with PlatformIO
 - Adafruit libraries preferred
-- Extensive Serial.println() debug output (115200 baud)
+- Extensive `Serial.println()` debug output (115200 baud)
 - Test each sensor individually before integrating
 - Error handling for all I2C operations
 
+---
+
 ## Current Status
-- [x] Blink test working
+
+- [x] Blink test
 - [x] One soil sensor reading
-- [x] I2C multiplexer integrated (PCA9546)
-- [x] All sensors reading (TSL2591 + SHT40 + 3× soil + OLED display)
+- [x] I2C multiplexer (PCA9546)
+- [x] All sensors (TSL2591 + SHT40 + 3× soil + OLED)
 - [x] WiFi connection
-- [x] MQTT publishing (HiveMQ Cloud, TLS, JSON to plant/sensor_pod_001/sensors)
+- [x] MQTT publishing (HiveMQ Cloud, TLS, JSON)
+- [x] 2-minute averaging before publish
+- [x] OTA updates (ArduinoOTA, IP-based on Windows)
