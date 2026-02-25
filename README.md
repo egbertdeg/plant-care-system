@@ -16,14 +16,14 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 
 ## Project Status
 
-**Phase 2 complete — full data pipeline live.**
+**Phase 3 in progress — watering can firmware live.**
 
 - ✅ Sensor pod firmware (all sensors reading)
 - ✅ WiFi + MQTT → HiveMQ Cloud
 - ✅ FastAPI backend deployed on Railway
 - ✅ PostgreSQL storing averaged readings
 - ✅ OTA firmware updates (no USB required)
-- 🔄 Watering can firmware
+- ✅ Watering can firmware (flashed, IMU live — pressure sensor to be added)
 - ⏳ Mobile app
 - ⏳ ML predictions
 

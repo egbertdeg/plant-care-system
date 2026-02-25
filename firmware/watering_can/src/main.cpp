@@ -91,8 +91,9 @@ unsigned long settleStartMs  = 0;
 unsigned long lastActivityMs = 0;
 unsigned long lastStatusMs   = 0;
 
-bool oledPresent = false;
-bool ntpSynced   = false;
+bool oledPresent  = false;
+bool mprlsPresent = false;   // non-fatal: volume measurement disabled without sensor
+bool ntpSynced    = false;
 
 // Tap detection window
 bool          tapPending   = false;
@@ -450,7 +451,7 @@ void publishEvent(float volumeMl, unsigned long durationMs, time_t ts) {
 void publishStatus() {
     if (!mqtt.connected()) return;
     float battV    = readBatteryV();
-    float pressure = mprls.readPressure();
+    float pressure = mprlsPresent ? mprls.readPressure() : 0.0f;
     int   battPct  = constrain((int)((battV - 3.3f) / 0.9f * 100.0f), 0, 100);
 
     PlantRecord rec = loadPlant(currentPlant);
@@ -526,14 +527,15 @@ void setup() {
     imu.setAccelDataRate(LSM6DS_RATE_104_HZ);
     setupTapDetection();
 
-    // ── Pressure sensor ──────────────────────────────────────
-    if (!mprls.begin()) {
-        Serial.println("ERROR: MPRLS not found at 0x18!");
-        while (1) delay(100);
+    // ── Pressure sensor (non-fatal — not installed yet) ──────
+    mprlsPresent = mprls.begin();
+    if (mprlsPresent) {
+        Serial.println("MPRLS pressure sensor found!");
+        pressureUpright = mprls.readPressure();
+        Serial.printf("Baseline pressure: %.2f hPa\n", pressureUpright);
+    } else {
+        Serial.println("MPRLS not found — volume measurement disabled (OK, not installed yet)");
     }
-    Serial.println("MPRLS pressure sensor found!");
-    pressureUpright = mprls.readPressure();
-    Serial.printf("Baseline pressure: %.2f hPa\n", pressureUpright);
 
     // ── OLED (non-fatal — not installed yet) ─────────────────
     oledPresent = display.begin(SSD1306_SWITCHCAPVCC, I2C_OLED);
@@ -628,7 +630,7 @@ void loop() {
     }
 
     float tilt     = readTiltDegrees();
-    float pressure = mprls.readPressure();
+    float pressure = mprlsPresent ? mprls.readPressure() : 0.0f;
     float battV    = readBatteryV();
 
     pollTapDetection();
@@ -691,22 +693,27 @@ void loop() {
             break;
 
         case REPORTING: {
-            float pressureEnd  = mprls.readPressure();
-            pressureUpright    = pressureEnd;       // update baseline for next pour
+            float pressureEnd  = mprlsPresent ? mprls.readPressure() : 0.0f;
+            if (mprlsPresent) pressureUpright = pressureEnd;   // update baseline
             float deltaP       = pressureStart - pressureEnd;
-            float volumeMl     = deltaP * ML_PER_HPA;
+            float volumeMl     = mprlsPresent ? (deltaP * ML_PER_HPA) : 0.0f;
             unsigned long durationMs = millis() - pourStartMs;
             time_t now = ntpSynced ? time(nullptr) : 0;
 
-            Serial.printf("→ REPORT  P_start=%.2f  P_end=%.2f  ΔP=%.2f hPa\n",
-                          pressureStart, pressureEnd, deltaP);
-            Serial.printf("   volume=%.0f ml  duration=%lus  plant=%d\n",
-                          volumeMl, durationMs / 1000UL, currentPlant + 1);
+            if (mprlsPresent) {
+                Serial.printf("→ REPORT  P_start=%.2f  P_end=%.2f  ΔP=%.2f hPa\n",
+                              pressureStart, pressureEnd, deltaP);
+                Serial.printf("   volume=%.0f ml  duration=%lus  plant=%d\n",
+                              volumeMl, durationMs / 1000UL, currentPlant + 1);
+            } else {
+                Serial.printf("→ REPORT (no pressure sensor)  duration=%lus  plant=%d\n",
+                              durationMs / 1000UL, currentPlant + 1);
+            }
 
-            if (volumeMl >= MIN_VOLUME_ML) {
+            if (mprlsPresent && volumeMl >= MIN_VOLUME_ML) {
                 recordWatering(currentPlant, volumeMl, now);
                 publishEvent(volumeMl, durationMs, now);
-            } else {
+            } else if (mprlsPresent) {
                 Serial.printf("   Volume %.0f ml < %.0f ml min — not recording\n",
                               volumeMl, (float)MIN_VOLUME_ML);
             }
