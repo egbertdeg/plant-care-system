@@ -37,9 +37,15 @@ class PlantUpdate(BaseModel):
     location:             Optional[str]   = None
     size_cm:              Optional[float] = None
     pot_size_l:           Optional[float] = None
+    soil_sensor:          Optional[int]   = None  # 1, 2, or 3
     target_volume_ml:     Optional[float] = None
     target_interval_days: Optional[int]   = None
     notes:                Optional[str]   = None
+
+
+class ManualWatering(BaseModel):
+    volume_ml:  Optional[float] = None
+    notes:      Optional[str]   = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -70,6 +76,7 @@ def _plant_summary(plant: Plant, last_event: Optional[WateringEvent]) -> dict:
         "location":             plant.location,
         "size_cm":              plant.size_cm,
         "pot_size_l":           plant.pot_size_l,
+        "soil_sensor":          plant.soil_sensor,
         "target_volume_ml":     plant.target_volume_ml,
         "target_interval_days": plant.target_interval_days,
         "notes":                plant.notes,
@@ -174,6 +181,28 @@ def upsert_plant(plant_id: int, body: PlantUpdate, db: Session = Depends(get_db)
         .first()
     )
     return _plant_summary(plant, last_event)
+
+
+@app.post("/plants/{plant_id}/waterings", status_code=201)
+def log_manual_watering(plant_id: int, body: ManualWatering, db: Session = Depends(get_db)):
+    """Manually log a watering (e.g. watered without the device). Resets the last-watered clock."""
+    if plant_id < 1 or plant_id > 20:
+        raise HTTPException(status_code=400, detail="plant_id must be 1-20")
+    if not db.query(Plant).filter(Plant.id == plant_id).first():
+        raise HTTPException(status_code=404, detail=f"Plant {plant_id} has no profile yet")
+
+    now = datetime.now(timezone.utc)
+    event = WateringEvent(
+        plant_index=plant_id,
+        device_id="manual",
+        source="manual",
+        volume_ml=body.volume_ml,
+        timestamp=now,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
 
 
 # ── Plant photo endpoints ─────────────────────────────────────────────────────

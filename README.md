@@ -11,7 +11,7 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 **Software:**
 - Embedded firmware (Arduino/PlatformIO) — **live**
 - Cloud backend (FastAPI + PostgreSQL on Railway) — **live**
-- Mobile app (Flutter) — *planned*
+- Mobile app (Flutter) — *in development*
 - ML models for watering prediction — *planned*
 
 ## Project Status
@@ -29,13 +29,18 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 
 ## Live Endpoints
 
+Base URL: `https://plant-api-production-7c02.up.railway.app`
+
 | Endpoint | Description |
 |---|---|
 | `GET /health` | Health check |
 | `GET /readings/latest` | Most recent sensor reading |
 | `GET /readings?device_id=sensor_pod_001&limit=100` | Reading history |
-
-Base URL: `https://plant-api-production-7c02.up.railway.app`
+| `GET /plants` | All plant profiles + last watered + schedule status |
+| `GET /plants/{id}` | Single plant (id = 1–20) |
+| `PUT /plants/{id}` | Create / update plant profile |
+| `GET /plants/{id}/waterings` | Watering history for one plant |
+| `GET /waterings` | All recent watering events |
 
 ## Quick Start
 
@@ -100,14 +105,26 @@ See complete [Bill of Materials](docs/hardware/bill-of-materials.md)
 - [x] Deploy to Railway
 - [x] OTA firmware updates
 
-### Phase 3: Mobile App
-- [ ] Flutter app UI
-- [ ] Real-time sensor data display
-- [ ] Watering history
-- [ ] Push notifications
+### Phase 3: Watering Can + Plant Management (In Progress)
+- [x] Watering can firmware (IMU, tap detection, deep sleep, OTA)
+- [x] Backend plant profiles (name, species, location, size, pot, schedule)
+- [x] Backend watering event logging (MQTT → PostgreSQL)
+- [x] Plant photo storage (upload/download via API)
+- [ ] MPRLS pressure sensor (volume measurement) — hardware pending
+- [ ] OLED display — hardware pending
 
-### Phase 4: ML & Intelligence
-- [ ] Collect training data
+### Phase 4: Mobile App (In Development)
+- [ ] Backend: soil sensor mapping + manual watering log endpoint
+- [ ] Flutter project setup + API service + data models
+- [ ] Plants tab — list, detail, edit, log watering
+- [ ] Photo upload from camera / photo library
+- [ ] Sensors tab — room conditions + soil moisture per plant
+- [ ] Local notifications for overdue plants
+
+See [mobile/README.md](mobile/README.md) for full screen designs and implementation plan.
+
+### Phase 5: ML & Intelligence
+- [ ] Collect training data (soil moisture trends + watering history)
 - [ ] Train watering prediction model
 - [ ] Integrate predictions into app
 
@@ -115,7 +132,9 @@ See complete [Bill of Materials](docs/hardware/bill-of-materials.md)
 
 - [Bill of Materials](docs/hardware/bill-of-materials.md)
 - [Backend README](backend/README.md)
+- [Mobile App README](mobile/README.md)
 - [Sensor Pod README](firmware/sensor_pod/README.md)
+- [Watering Can README](firmware/watering_can/README.md)
 
 ## License
 

@@ -30,6 +30,7 @@ class Plant(Base):
     location:             Mapped[Optional[str]]   = mapped_column(String(128), nullable=True)
     size_cm:              Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     pot_size_l:           Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    soil_sensor:          Mapped[Optional[int]]   = mapped_column(Integer, nullable=True)  # 1, 2, or 3 — which soil channel is in this pot
     target_volume_ml:     Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     target_interval_days: Mapped[Optional[int]]   = mapped_column(Integer, nullable=True)
     notes:                Mapped[Optional[str]]   = mapped_column(Text, nullable=True)
@@ -62,6 +63,7 @@ class WateringEvent(Base):
     id:            Mapped[int]             = mapped_column(Integer, primary_key=True, autoincrement=True)
     plant_index:   Mapped[int]             = mapped_column(Integer, index=True)
     device_id:     Mapped[str]             = mapped_column(String(64))
+    source:        Mapped[str]             = mapped_column(String(16), default="device")  # "device" or "manual"
     volume_ml:     Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     duration_s:    Mapped[Optional[int]]   = mapped_column(Integer, nullable=True)
     avg_volume_ml: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

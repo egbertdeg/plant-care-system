@@ -100,8 +100,14 @@ Accepted types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/waterings?limit=50` | All recent watering events |
+| POST | `/plants/{id}/waterings` | Manually log a watering (resets last-watered clock) |
 | GET | `/plants/{id}/waterings?limit=20` | Watering history for one plant |
+| GET | `/waterings?limit=50` | All recent watering events |
+
+**`POST /plants/{id}/waterings` body** (all fields optional):
+```json
+{ "volume_ml": 200, "notes": "topped up after holiday" }
+```
 
 **Example response (`/readings/latest`):**
 ```json
@@ -145,6 +151,7 @@ User-maintained plant profiles. `id` = `plant_index` on the watering can (1–20
 | `location` | str? | Room / shelf |
 | `size_cm` | float? | Height (upright) or length (climber/trailing) in cm |
 | `pot_size_l` | float? | Pot volume in litres |
+| `soil_sensor` | int? | Soil sensor channel in this pot (1, 2, or 3) |
 | `target_volume_ml` | float? | Desired pour volume |
 | `target_interval_days` | int? | Days between waterings |
 | `notes` | text? | Plant diary — pest history, repotting notes, etc. |
@@ -170,7 +177,8 @@ One row per watering event published by the watering can.
 | Field | Type | Description |
 |---|---|---|
 | `plant_index` | int | Which plant was watered (1-20) |
-| `device_id` | str | Source device |
+| `device_id` | str | Source device (`watering_can_001` or `manual`) |
+| `source` | str | `"device"` or `"manual"` |
 | `volume_ml` | float? | Volume dispensed (null until MPRLS installed) |
 | `duration_s` | int? | Pour duration |
 | `avg_volume_ml` | float? | Rolling avg from device NVS |
