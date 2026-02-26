@@ -4,7 +4,7 @@ Flutter app for managing plants, viewing sensor data, and tracking watering hist
 
 ## Status
 
-⏳ **In development** — project structure ready, implementation starting.
+✅ **v1 live** — Plants tab, Sensors tab, photo gallery all functional. Running on web (Chrome) and ready for iOS/Android build.
 
 ## Tech Stack
 
@@ -14,8 +14,7 @@ Flutter app for managing plants, viewing sensor data, and tracking watering hist
 | State management | Riverpod | Typed, testable, no boilerplate |
 | HTTP client | `http` package | Lightweight, sufficient for REST |
 | Image picker | `image_picker` | Camera + photo library access |
-| Notifications | `flutter_local_notifications` | Overdue watering reminders |
-| Image caching | `cached_network_image` | Smooth photo loading |
+| Notifications | `flutter_local_notifications` | Overdue watering reminders (planned) |
 
 ## Screens
 
@@ -112,86 +111,81 @@ Flutter app for managing plants, viewing sensor data, and tracking watering hist
 ## Folder Structure
 
 ```
-mobile/
-├── README.md
+mobile/plant_care/
 ├── pubspec.yaml                   # dependencies
-├── assets/
-│   └── images/                    # app icons, placeholder plant image
 ├── lib/
 │   ├── main.dart                  # entry point, ProviderScope
-│   ├── app.dart                   # MaterialApp, theme, routing
+│   ├── app.dart                   # MaterialApp, theme, tab navigation
 │   ├── theme/
-│   │   └── app_theme.dart         # colours, text styles, card styles
+│   │   └── app_theme.dart         # Material 3, green seed colour
 │   ├── models/
-│   │   ├── plant.dart             # Plant, fromJson/toJson
-│   │   ├── watering_event.dart    # WateringEvent, fromJson
-│   │   ├── sensor_reading.dart    # SensorReading, fromJson
-│   │   └── plant_photo.dart       # PlantPhotoMeta (no image bytes)
+│   │   ├── plant.dart             # Plant.fromJson, displayName
+│   │   ├── watering_event.dart    # WateringEvent.fromJson, effectiveTime
+│   │   ├── sensor_reading.dart    # SensorReading.fromJson, soilPercent()
+│   │   └── plant_photo.dart       # PlantPhotoMeta (no image bytes in client)
 │   ├── services/
 │   │   └── api_service.dart       # all HTTP calls to Railway backend
 │   ├── providers/
-│   │   ├── plants_provider.dart   # AsyncNotifier — plant list + detail
-│   │   └── sensors_provider.dart  # AsyncNotifier — latest sensor reading
+│   │   ├── plants_provider.dart   # AsyncNotifier — plant list + detail + waterings
+│   │   └── sensors_provider.dart  # AsyncNotifier — 60 s auto-poll
 │   ├── screens/
 │   │   ├── plants/
-│   │   │   ├── plant_list_screen.dart
-│   │   │   ├── plant_detail_screen.dart
-│   │   │   └── edit_plant_screen.dart
+│   │   │   ├── plant_list_screen.dart   # pull-to-refresh, FAB to add plant
+│   │   │   ├── plant_detail_screen.dart # conditions, schedule, history, photos
+│   │   │   └── edit_plant_screen.dart   # full profile form, PUT on save
 │   │   └── sensors/
-│   │       └── sensors_screen.dart
+│   │       └── sensors_screen.dart      # room card + soil bars
 │   └── widgets/
-│       ├── plant_card.dart        # card used in list
-│       ├── watering_status.dart   # "last watered X days ago" + button
-│       ├── soil_bar.dart          # progress bar for soil moisture
-│       └── photo_gallery.dart     # horizontal scroll + upload button
+│       ├── plant_card.dart        # red/green water indicator
+│       ├── soil_bar.dart          # colour-coded moisture bar
+│       └── photo_gallery.dart     # horizontal scroll, upload, delete
 └── test/
     └── widget_test.dart
 ```
 
 ## Implementation Roadmap
 
-### Phase 1 — Backend additions (prerequisite)
-- [ ] Add `soil_sensor` (1/2/3 or null) field to `Plant` model
-- [ ] Add `source` field to `WateringEvent` (`"device"` or `"manual"`)
-- [ ] Add `POST /plants/{id}/waterings` endpoint (manual watering log)
+### Phase 1 — Backend additions ✅
+- [x] Add `soil_sensor` (1/2/3 or null) field to `Plant` model
+- [x] Add `source` field to `WateringEvent` (`"device"` or `"manual"`)
+- [x] Add `POST /plants/{id}/waterings` endpoint (manual watering log)
+- [x] CORS middleware (required for Flutter web)
 
-### Phase 2 — Flutter project init + skeleton
-- [ ] Run `flutter create plant_care --org com.egbert` in `mobile/`
-- [ ] Add dependencies to `pubspec.yaml`
-- [ ] Wire up `main.dart` → `app.dart` with ProviderScope + tab navigation
-- [ ] Implement `ApiService` (all endpoints)
-- [ ] Define all model classes with `fromJson`
+### Phase 2 — Flutter project init + skeleton ✅
+- [x] `flutter create plant_care` in `mobile/`
+- [x] Dependencies: flutter_riverpod, http, image_picker, intl
+- [x] `main.dart` → `app.dart` with ProviderScope + tab navigation
+- [x] `ApiService` (all endpoints)
+- [x] Model classes with `fromJson`
 
-### Phase 3 — Plants tab
-- [ ] `PlantsProvider` — fetch + cache plant list
-- [ ] `PlantListScreen` — cards with needs_water indicator, pull-to-refresh
-- [ ] `PlantDetailScreen` — conditions row, schedule card, history list
-- [ ] `EditPlantScreen` — full profile form, PUT on save
-- [ ] Log watering bottom sheet → POST /plants/{id}/waterings
+### Phase 3 — Plants tab ✅
+- [x] `PlantsProvider` — fetch + cache plant list
+- [x] `PlantListScreen` — cards with needs_water indicator, pull-to-refresh
+- [x] `PlantDetailScreen` — conditions row, schedule card, history list
+- [x] `EditPlantScreen` — full profile form, PUT on save
+- [x] Log watering bottom sheet → POST /plants/{id}/waterings
 
-### Phase 4 — Photos
-- [ ] `PhotoGallery` widget — horizontal scroll in plant detail
-- [ ] Upload from camera / photo library via `image_picker`
-- [ ] Full-screen viewer on tap, delete swipe
+### Phase 4 — Photos ✅
+- [x] `PhotoGallery` widget — horizontal scroll in plant detail
+- [x] Upload from camera / photo library via `image_picker`
+- [ ] Full-screen viewer on tap
 
-### Phase 5 — Sensors tab
-- [ ] `SensorsProvider` — poll /readings/latest every 60 s
-- [ ] `SensorsScreen` — room card + soil channel list with plant name lookup
+### Phase 5 — Sensors tab ✅
+- [x] `SensorsProvider` — poll /readings/latest every 60 s
+- [x] `SensorsScreen` — room card + soil channel list with plant name lookup
 
-### Phase 6 — Polish
-- [ ] App theme (colours, typography)
-- [ ] Empty states and loading skeletons
-- [ ] Error handling + retry
+### Phase 6 — Polish (next)
 - [ ] Local notifications for overdue plants
+- [ ] Full-screen photo viewer
+- [ ] iOS TestFlight build
 
 ## Setup
 
 ```bash
-cd mobile
-flutter create plant_care --org com.egbert --platforms ios,android
-# then move generated files up or work inside plant_care/
+cd mobile/plant_care
 flutter pub get
-flutter run
+flutter run -d chrome          # web (works on Windows)
+flutter run                    # iOS/Android (requires Xcode / Android SDK)
 ```
 
 ## API

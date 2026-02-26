@@ -16,7 +16,7 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 
 ## Project Status
 
-**Phase 3 in progress — watering can firmware live.**
+**Phase 4 in progress — mobile app running.**
 
 - ✅ Sensor pod firmware (all sensors reading)
 - ✅ WiFi + MQTT → HiveMQ Cloud
@@ -24,7 +24,8 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 - ✅ PostgreSQL storing averaged readings
 - ✅ OTA firmware updates (no USB required)
 - ✅ Watering can firmware (flashed, IMU live — pressure sensor to be added)
-- ⏳ Mobile app
+- ✅ Plant profiles, photo storage, watering history (API + backend)
+- ✅ Flutter app — Plants tab, Sensors tab, photo gallery (web + iOS/Android)
 - ⏳ ML predictions
 
 ## Live Endpoints
@@ -40,7 +41,12 @@ Base URL: `https://plant-api-production-7c02.up.railway.app`
 | `GET /plants/{id}` | Single plant (id = 1–20) |
 | `PUT /plants/{id}` | Create / update plant profile |
 | `GET /plants/{id}/waterings` | Watering history for one plant |
+| `POST /plants/{id}/waterings` | Manually log a watering |
 | `GET /waterings` | All recent watering events |
+| `POST /plants/{id}/photos` | Upload a plant photo |
+| `GET /plants/{id}/photos` | List photo metadata |
+| `GET /plants/{id}/photos/{photo_id}` | Download a photo |
+| `DELETE /plants/{id}/photos/{photo_id}` | Delete a photo |
 
 ## Quick Start
 
@@ -65,7 +71,7 @@ Base URL: `https://plant-api-production-7c02.up.railway.app`
 │   ├── sensor_pod/     # Monitors plants (LIVE)
 │   └── watering_can/   # Tracks watering events (in progress)
 ├── backend/            # FastAPI + PostgreSQL (LIVE on Railway)
-├── mobile/             # Flutter app (future)
+├── mobile/             # Flutter app (in progress)
 ├── ml/                 # ML models (future)
 ├── docs/               # Documentation
 └── scripts/            # Utility scripts
@@ -113,13 +119,15 @@ See complete [Bill of Materials](docs/hardware/bill-of-materials.md)
 - [ ] MPRLS pressure sensor (volume measurement) — hardware pending
 - [ ] OLED display — hardware pending
 
-### Phase 4: Mobile App (In Development)
-- [ ] Backend: soil sensor mapping + manual watering log endpoint
-- [ ] Flutter project setup + API service + data models
-- [ ] Plants tab — list, detail, edit, log watering
-- [ ] Photo upload from camera / photo library
-- [ ] Sensors tab — room conditions + soil moisture per plant
+### Phase 4: Mobile App (In Progress)
+- [x] Backend: soil sensor mapping + manual watering log endpoint
+- [x] Flutter project setup + API service + data models
+- [x] Plants tab — list, detail, edit, log watering
+- [x] Photo upload from camera / photo library
+- [x] Sensors tab — room conditions + soil moisture per plant
 - [ ] Local notifications for overdue plants
+- [ ] Full-screen photo viewer
+- [ ] iOS TestFlight distribution
 
 See [mobile/README.md](mobile/README.md) for full screen designs and implementation plan.
 
