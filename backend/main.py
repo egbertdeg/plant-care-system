@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import FastAPI, Depends, Query, HTTPException, UploadFile, File, Response
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, text
@@ -47,6 +48,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Plant Care API", version="2.1", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
