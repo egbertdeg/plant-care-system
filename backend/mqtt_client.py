@@ -1,16 +1,18 @@
 import json
 import ssl
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import paho.mqtt.client as mqtt
+from sqlalchemy import desc
 from database import SessionLocal
 from models import SensorReading, WateringEvent
 from config import settings
 
 logger = logging.getLogger(__name__)
 
-TOPIC_SENSORS = "plant/+/sensors"
-TOPIC_EVENTS  = "plant/+/event"
+TOPIC_SENSORS      = "plant/+/sensors"
+TOPIC_EVENTS       = "plant/+/event"
+MERGE_WINDOW_HOURS = 6   # pours within this window are merged into one watering event
 
 
 def _device_id_from_topic(topic: str) -> str:
@@ -54,22 +56,51 @@ def _handle_watering_event(topic: str, data: dict):
         except Exception:
             pass
 
-    event = WateringEvent(
-        plant_index=plant_index,
-        device_id=device_id,
-        volume_ml=data.get("volume_ml"),
-        duration_s=data.get("duration_s"),
-        avg_volume_ml=data.get("avg_volume_ml"),
-        timestamp=ts,
-    )
     db = SessionLocal()
     try:
-        db.add(event)
-        db.commit()
-        logger.info(
-            f"Watering event saved: plant={plant_index} device={device_id} "
-            f"volume={data.get('volume_ml')} ml duration={data.get('duration_s')} s"
+        # Merge into an existing event if one exists within the window
+        cutoff   = datetime.now(timezone.utc) - timedelta(hours=MERGE_WINDOW_HOURS)
+        existing = (
+            db.query(WateringEvent)
+            .filter(
+                WateringEvent.plant_index == plant_index,
+                WateringEvent.received_at >= cutoff,
+            )
+            .order_by(desc(WateringEvent.received_at))
+            .first()
         )
+
+        if existing:
+            if data.get("volume_ml") is not None:
+                existing.volume_ml = (existing.volume_ml or 0) + data["volume_ml"]
+            if data.get("duration_s") is not None:
+                existing.duration_s = (existing.duration_s or 0) + data["duration_s"]
+            if ts:
+                existing.timestamp = ts   # keep latest device timestamp
+            if data.get("avg_volume_ml") is not None:
+                existing.avg_volume_ml = data["avg_volume_ml"]
+            existing.received_at = datetime.now(timezone.utc)
+            db.commit()
+            logger.info(
+                f"Merged watering event: plant={plant_index} device={device_id} "
+                f"total_volume={existing.volume_ml} ml"
+            )
+        else:
+            event = WateringEvent(
+                plant_index=plant_index,
+                device_id=device_id,
+                source="device",
+                volume_ml=data.get("volume_ml"),
+                duration_s=data.get("duration_s"),
+                avg_volume_ml=data.get("avg_volume_ml"),
+                timestamp=ts,
+            )
+            db.add(event)
+            db.commit()
+            logger.info(
+                f"Watering event saved: plant={plant_index} device={device_id} "
+                f"volume={data.get('volume_ml')} ml duration={data.get('duration_s')} s"
+            )
     finally:
         db.close()
 

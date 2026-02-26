@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import FastAPI, Depends, Query, HTTPException, UploadFile, File, Response
@@ -183,15 +183,38 @@ def upsert_plant(plant_id: int, body: PlantUpdate, db: Session = Depends(get_db)
     return _plant_summary(plant, last_event)
 
 
+MERGE_WINDOW_HOURS = 6   # pours within this window are merged into one watering event
+
+
 @app.post("/plants/{plant_id}/waterings", status_code=201)
 def log_manual_watering(plant_id: int, body: ManualWatering, db: Session = Depends(get_db)):
-    """Manually log a watering (e.g. watered without the device). Resets the last-watered clock."""
+    """Manually log a watering. Multiple logs within 6 hours are merged into one event."""
     if plant_id < 1 or plant_id > 20:
         raise HTTPException(status_code=400, detail="plant_id must be 1-20")
     if not db.query(Plant).filter(Plant.id == plant_id).first():
         raise HTTPException(status_code=404, detail=f"Plant {plant_id} has no profile yet")
 
-    now = datetime.now(timezone.utc)
+    now    = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=MERGE_WINDOW_HOURS)
+    existing = (
+        db.query(WateringEvent)
+        .filter(
+            WateringEvent.plant_index == plant_id,
+            WateringEvent.received_at >= cutoff,
+        )
+        .order_by(desc(WateringEvent.received_at))
+        .first()
+    )
+
+    if existing:
+        if body.volume_ml is not None:
+            existing.volume_ml = (existing.volume_ml or 0) + body.volume_ml
+        existing.timestamp   = now
+        existing.received_at = now
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     event = WateringEvent(
         plant_index=plant_id,
         device_id="manual",
