@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import FastAPI, Depends, Query, HTTPException, UploadFile, File, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, text
 
 from database import engine, get_db, Base
 from models import SensorReading, Plant, PlantPhoto, WateringEvent
@@ -17,9 +17,29 @@ logging.basicConfig(level=logging.INFO)
 mqtt_client = create_mqtt_client()
 
 
+def _run_migrations():
+    """Idempotent column additions for schema changes on existing tables."""
+    with engine.connect() as conn:
+        migrations = [
+            "ALTER TABLE plants ADD COLUMN IF NOT EXISTS soil_sensor INTEGER",
+            "ALTER TABLE plants ADD COLUMN IF NOT EXISTS species VARCHAR(128)",
+            "ALTER TABLE plants ADD COLUMN IF NOT EXISTS size_cm FLOAT",
+            "ALTER TABLE plants ADD COLUMN IF NOT EXISTS pot_size_l FLOAT",
+            "ALTER TABLE plant_photos ADD COLUMN IF NOT EXISTS caption VARCHAR(256)",
+            "ALTER TABLE watering_events ADD COLUMN IF NOT EXISTS source VARCHAR(16) DEFAULT 'device'",
+        ]
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                logging.warning(f"Migration skipped ({sql[:50]}...): {e}")
+        conn.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)  # creates any new tables on startup
+    _run_migrations()                       # adds new columns to existing tables
     start_mqtt(mqtt_client)
     yield
     mqtt_client.loop_stop()
