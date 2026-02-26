@@ -350,7 +350,7 @@ void updateDisplayPouring(float pressureHpa, unsigned long elapsedMs) {
     display.setCursor(0,  0); display.print(">>>> POURING <<<<");
     display.setCursor(0,  8); display.printf("Plant %d/20", currentPlant + 1);
     display.setCursor(0, 16); display.printf("Elapsed: %lus", elapsedMs / 1000UL);
-    display.setCursor(0, 24); display.printf("P: %.1f hPa", pressureHpa);
+    display.setCursor(0, 24); display.printf("~%.0f ml", elapsedMs / 1000.0f * FLOW_RATE_ML_PER_S);
     display.display();
 }
 
@@ -820,27 +820,24 @@ void loop() {
             break;
 
         case REPORTING: {
-            float pressureEnd  = mprlsPresent ? mprls.readPressure() : 0.0f;
-            if (mprlsPresent) pressureUpright = pressureEnd;   // update baseline
-            float deltaP       = pressureStart - pressureEnd;
-            float volumeMl     = mprlsPresent ? (deltaP * ML_PER_HPA) : 0.0f;
             unsigned long durationMs = millis() - pourStartMs;
+            float volumeMl = (durationMs / 1000.0f) * FLOW_RATE_ML_PER_S;
             time_t now = ntpSynced ? time(nullptr) : 0;
 
+            // Read MPRLS for debug logging only — not used for volume calculation.
             if (mprlsPresent) {
-                Serial.printf("→ REPORT  P_start=%.2f  P_end=%.2f  ΔP=%.2f hPa\n",
-                              pressureStart, pressureEnd, deltaP);
-                Serial.printf("   volume=%.0f ml  duration=%lus  plant=%d\n",
-                              volumeMl, durationMs / 1000UL, currentPlant + 1);
-            } else {
-                Serial.printf("→ REPORT (no pressure sensor)  duration=%lus  plant=%d\n",
-                              durationMs / 1000UL, currentPlant + 1);
+                float pressureEnd = mprls.readPressure();
+                pressureUpright   = pressureEnd;   // keep baseline fresh
+                Serial.printf("→ REPORT  P_start=%.2f  P_end=%.2f  ΔP=%.2f hPa (debug only)\n",
+                              pressureStart, pressureEnd, pressureStart - pressureEnd);
             }
+            Serial.printf("→ REPORT  duration=%lus  volume=%.0f ml (%.0f ml/s)  plant=%d\n",
+                          durationMs / 1000UL, volumeMl, (float)FLOW_RATE_ML_PER_S, currentPlant + 1);
 
-            if (mprlsPresent && volumeMl >= MIN_VOLUME_ML) {
+            if (volumeMl >= MIN_VOLUME_ML) {
                 recordWatering(currentPlant, volumeMl, now);
                 publishEvent(volumeMl, durationMs, now);
-            } else if (mprlsPresent) {
+            } else {
                 Serial.printf("   Volume %.0f ml < %.0f ml min — not recording\n",
                               volumeMl, (float)MIN_VOLUME_ML);
             }

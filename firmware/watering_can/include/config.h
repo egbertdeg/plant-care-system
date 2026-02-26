@@ -5,7 +5,7 @@
 //   • Debug display (pressure, tilt, fill level, battery/MQTT)
 //   • Extended sleep timeout (10 min instead of 2 min)
 // Comment out before deploying.
-#define DEV_MODE
+// #define DEV_MODE
 
 // ─── Device identity ────────────────────────────────────────
 #define DEVICE_ID   "watering_can_001"
@@ -44,6 +44,12 @@
 //
 #define CAN_AREA_CM2   154.0f              // inner cross-section (cm²) — measure your can
 #define ML_PER_HPA     (1.02f * CAN_AREA_CM2)  // ≈ 157 ml/hPa for the default above
+
+// Fixed flow rate used for volume estimation.
+// Measured empirically: choked flow through spout ≈ 50 ml/s.
+// volume_ml = pour_duration_s × FLOW_RATE_ML_PER_S
+// (MPRLS pressure sensor is wired in but not used for volume — retained for future calibration.)
+#define FLOW_RATE_ML_PER_S  50.0f
 
 // Ignore events smaller than this (accidental tips, drips)
 #define MIN_VOLUME_ML  20.0f
