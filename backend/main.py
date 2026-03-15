@@ -137,12 +137,14 @@ def latest_reading(db: Session = Depends(get_db)):
 def get_readings(
     device_id: str = "sensor_pod_001",
     limit: int = Query(default=100, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
     return (
         db.query(SensorReading)
         .filter(SensorReading.device_id == device_id)
         .order_by(desc(SensorReading.timestamp))
+        .offset(offset)
         .limit(limit)
         .all()
     )
