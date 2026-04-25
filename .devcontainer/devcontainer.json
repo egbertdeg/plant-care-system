@@ -1,0 +1,45 @@
+{
+  "name": "Plant Care System",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+
+  // Install Cloudflare Worker deps after container creation
+  "postCreateCommand": "cd cloudflare && npm install",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // TypeScript + Workers
+        "ms-vscode.vscode-typescript-next",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        // Cloudflare Workers syntax / bindings
+        "cloudflare.cloudflare-workers-bindings"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[typescript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        }
+      }
+    }
+  },
+
+  // wrangler dev runs on 8787
+  "forwardPorts": [8787],
+  "portsAttributes": {
+    "8787": {
+      "label": "Wrangler Dev",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // Inject Cloudflare API token from a Codespace secret named CLOUDFLARE_API_TOKEN
+  // Set it at: github.com/Settings → Codespaces → Secrets
+  "secrets": {
+    "CLOUDFLARE_API_TOKEN": {
+      "description": "Cloudflare API token — used by wrangler deploy without needing wrangler login",
+      "documentationUrl": "https://developers.cloudflare.com/workers/wrangler/ci-cd/#api-token"
+    }
+  }
+}
