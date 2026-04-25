@@ -9,70 +9,87 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 - ESP32-S3 smart watering can (tilt detection, volume measurement via pressure sensor)
 
 **Software:**
-- Embedded firmware (Arduino/PlatformIO) — **live**
-- Cloud backend (FastAPI + PostgreSQL on Railway) — **live**
-- Mobile app (Flutter) — *in development*
-- ML models for watering prediction — *planned*
+- Embedded firmware (Arduino/PlatformIO)
+- Cloud backend (Cloudflare Worker + D1 + R2) — **live**
+- MCP server for Claude.ai integration — **live**
+- Mobile app (Flutter) — *shelved*
 
 ## Project Status
 
-**Phase 4 in progress — mobile app running.**
-
-- ✅ Sensor pod firmware (all sensors reading)
-- ✅ WiFi + MQTT → HiveMQ Cloud
-- ✅ FastAPI backend deployed on Railway
-- ✅ PostgreSQL storing averaged readings
+- ✅ Sensor pod firmware (all sensors reading, HTTP POST to Cloudflare)
+- ✅ Watering can firmware (IMU, tap detection, deep sleep, OTA, HTTP POST)
 - ✅ OTA firmware updates (no USB required)
-- ✅ Watering can firmware (flashed, IMU live — pressure sensor to be added)
-- ✅ Plant profiles, photo storage, watering history (API + backend)
-- ✅ Flutter app — Plants tab, Sensors tab, photo gallery (web + iOS/Android)
-- ⏳ ML predictions
+- ✅ Cloudflare Worker backend (plants, sensors, waterings, photos)
+- ✅ D1 database (SQLite at the edge)
+- ✅ R2 photo storage
+- ✅ MCP server — Claude.ai connected via Connectors
+- ⏳ Flash updated firmware to devices (sensor pod + watering can)
+- ⏳ ML predictions (future)
 
 ## Live Endpoints
 
-Base URL: `https://plant-api-production-7c02.up.railway.app`
+Worker URL: `https://plant-care-mcp.egbert-degroot.workers.dev`
 
+### MCP (Claude.ai)
 | Endpoint | Description |
 |---|---|
-| `GET /health` | Health check |
-| `GET /readings/latest` | Most recent sensor reading |
-| `GET /readings?device_id=sensor_pod_001&limit=100` | Reading history |
-| `GET /plants` | All plant profiles + last watered + schedule status |
-| `GET /plants/{id}` | Single plant (id = 1–20) |
-| `PUT /plants/{id}` | Create / update plant profile |
-| `GET /plants/{id}/waterings` | Watering history for one plant |
-| `POST /plants/{id}/waterings` | Manually log a watering |
-| `GET /waterings` | All recent watering events |
-| `POST /plants/{id}/photos` | Upload a plant photo |
-| `GET /plants/{id}/photos` | List photo metadata |
-| `GET /plants/{id}/photos/{photo_id}` | Download a photo |
-| `DELETE /plants/{id}/photos/{photo_id}` | Delete a photo |
+| `GET /mcp` | MCP server endpoint for Claude.ai |
+
+### Ingest (from firmware)
+| Endpoint | Description |
+|---|---|
+| `POST /ingest/sensors` | Sensor pod readings |
+| `POST /ingest/watering` | Watering can events |
+| `POST /ingest/status` | Watering can status |
+
+### API
+| Endpoint | Description |
+|---|---|
+| `GET /plants` | All plant profiles |
+| `GET /plants/{id}` | Single plant |
+| `PUT /plants/{id}` | Create / update plant |
+| `GET /plants/{id}/waterings` | Watering history |
+| `POST /plants/{id}/waterings` | Log a watering |
+| `GET /plants/{id}/photos` | List photos |
+| `POST /plants/{id}/photos` | Upload photo |
+| `GET /readings` | Sensor reading history |
+| `GET /readings/latest` | Most recent reading |
 
 ## Quick Start
 
-### Prerequisites
-- VS Code with PlatformIO extension
-- Git
-- ESP32-S3 boards and sensors (see [Bill of Materials](docs/hardware/bill-of-materials.md))
+### Cloud backend (Codespaces or local)
 
-### Firmware
-1. Clone this repository
-2. Open `firmware/sensor_pod/` in VS Code
-3. See [firmware/sensor_pod/README.md](firmware/sensor_pod/README.md) for build/OTA instructions
+The easiest way to work on the Cloudflare Worker is via **GitHub Codespaces** — no local setup needed.
 
-### Backend
-- Deployed automatically on Railway from `backend/` on every push to `master`
-- See [backend/README.md](backend/README.md) for local dev and deployment details
+1. Open the repo on GitHub → green **Code** button → **Codespaces** → **Create codespace**
+2. The devcontainer installs Node 22 and all dependencies automatically
+3. Add your `CLOUDFLARE_API_TOKEN` as a Codespace secret (repo Settings → Secrets → Codespaces)
+
+```bash
+cd cloudflare
+npm run dev      # local dev server
+npm run deploy   # deploy to production
+```
+
+### Firmware (local only — requires USB/OTA)
+
+Firmware flashing requires a local machine with PlatformIO.
+
+```bash
+# Build and flash via OTA
+pio run -e adafruit_feather_esp32s3_ota --target upload
+```
+
+See [firmware/sensor_pod/README.md](firmware/sensor_pod/README.md) and [firmware/watering_can/README.md](firmware/watering_can/README.md).
 
 ## Project Structure
 
 ```
 ├── firmware/           # ESP32 embedded code
-│   ├── sensor_pod/     # Monitors plants (LIVE)
-│   └── watering_can/   # Tracks watering events (in progress)
-├── backend/            # FastAPI + PostgreSQL (LIVE on Railway)
-├── mobile/             # Flutter app (in progress)
-├── ml/                 # ML models (future)
+│   ├── sensor_pod/     # Monitors plants — HTTP POST to Cloudflare
+│   └── watering_can/   # Tracks watering events — HTTP POST to Cloudflare
+├── cloudflare/         # Cloudflare Worker (backend + MCP server)
+├── backend/            # FastAPI backend — deprecated, replaced by Cloudflare
 ├── docs/               # Documentation
 └── scripts/            # Utility scripts
 ```
@@ -92,55 +109,13 @@ See complete [Bill of Materials](docs/hardware/bill-of-materials.md)
 **Watering Can:**
 - 1× ESP32-S3 Feather
 - 1× LSM6DS3 IMU (tilt detection)
-- 1× MPRLS pressure sensor (volume measurement)
+- 1× VL53L1X ToF sensor (water level via float in guide tube)
 - 1× OLED display
 - 1× 400mAh LiPo battery
-
-## Development Roadmap
-
-### Phase 1: Hardware (Complete)
-- [x] Order and receive hardware
-- [x] Set up development environment
-- [x] Sensor pod firmware (all sensors)
-- [x] WiFi + MQTT connectivity
-
-### Phase 2: Cloud Backend (Complete)
-- [x] FastAPI REST API
-- [x] PostgreSQL database
-- [x] MQTT subscriber service
-- [x] Deploy to Railway
-- [x] OTA firmware updates
-
-### Phase 3: Watering Can + Plant Management (In Progress)
-- [x] Watering can firmware (IMU, tap detection, deep sleep, OTA)
-- [x] Backend plant profiles (name, species, location, size, pot, schedule)
-- [x] Backend watering event logging (MQTT → PostgreSQL)
-- [x] Plant photo storage (upload/download via API)
-- [ ] MPRLS pressure sensor (volume measurement) — hardware pending
-- [ ] OLED display — hardware pending
-
-### Phase 4: Mobile App (In Progress)
-- [x] Backend: soil sensor mapping + manual watering log endpoint
-- [x] Flutter project setup + API service + data models
-- [x] Plants tab — list, detail, edit, log watering
-- [x] Photo upload from camera / photo library
-- [x] Sensors tab — room conditions + soil moisture per plant
-- [ ] Local notifications for overdue plants
-- [ ] Full-screen photo viewer
-- [ ] iOS TestFlight distribution
-
-See [mobile/README.md](mobile/README.md) for full screen designs and implementation plan.
-
-### Phase 5: ML & Intelligence
-- [ ] Collect training data (soil moisture trends + watering history)
-- [ ] Train watering prediction model
-- [ ] Integrate predictions into app
 
 ## Documentation
 
 - [Bill of Materials](docs/hardware/bill-of-materials.md)
-- [Backend README](backend/README.md)
-- [Mobile App README](mobile/README.md)
 - [Sensor Pod README](firmware/sensor_pod/README.md)
 - [Watering Can README](firmware/watering_can/README.md)
 
