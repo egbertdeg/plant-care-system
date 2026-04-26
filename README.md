@@ -12,6 +12,7 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 - Embedded firmware (Arduino/PlatformIO)
 - Cloud backend (Cloudflare Worker + D1 + R2) — **live**
 - MCP server for Claude.ai integration — **live**
+- PWA (React + Vite) for outdoor plant logging — **live**
 - Mobile app (Flutter) — *shelved*
 
 ## Project Status
@@ -23,6 +24,7 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 - ✅ D1 database (SQLite at the edge)
 - ✅ R2 photo storage
 - ✅ MCP server — Claude.ai connected via Connectors
+- ✅ PWA — sensor round, watering log, photo capture (`pwa/`)
 - ⏳ Flash updated firmware to devices (sensor pod + watering can)
 - ⏳ ML predictions (future)
 
@@ -54,6 +56,27 @@ Worker URL: `https://plant-care-mcp.egbert-degroot.workers.dev`
 | `POST /plants/{id}/photos` | Upload photo |
 | `GET /readings` | Sensor reading history |
 | `GET /readings/latest` | Most recent reading |
+
+## PWA — Outdoor Logging App
+
+Mobile-first progressive web app for standing-in-the-garden use. Designed for big touch targets and no keyboard input.
+
+```bash
+cd pwa
+npm install
+npm run dev       # dev server → http://localhost:5173
+npm run build     # production build → dist/ (includes service worker)
+```
+
+**Three workflows:**
+
+| Route | What it does |
+|---|---|
+| `/sensors` | Rapid moisture + pH entry for all 10 plants, then batch-log |
+| `/water` | Multi-select plants → time of day → volume → log waterings |
+| `/photos` | Per-plant camera capture → review → upload all |
+
+Calls the Cloudflare Worker REST API directly. No proxy needed.
 
 ## Quick Start
 
@@ -89,7 +112,9 @@ See [firmware/sensor_pod/README.md](firmware/sensor_pod/README.md) and [firmware
 │   ├── sensor_pod/     # Monitors plants — HTTP POST to Cloudflare
 │   └── watering_can/   # Tracks watering events — HTTP POST to Cloudflare
 ├── cloudflare/         # Cloudflare Worker (backend + MCP server)
+├── pwa/                # React PWA — sensor round, watering log, photo capture
 ├── backend/            # FastAPI backend — deprecated, replaced by Cloudflare
+├── mobile/             # Flutter app — shelved
 ├── docs/               # Documentation
 └── scripts/            # Utility scripts
 ```

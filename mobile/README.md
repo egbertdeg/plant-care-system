@@ -1,10 +1,12 @@
-# Plant Care — Mobile App
+# Plant Care — Mobile App (Flutter)
+
+> **Shelved** — superseded by the React PWA at [`pwa/`](../pwa/). The Flutter app was built against the deprecated Railway/FastAPI backend and is not maintained.
 
 Flutter app for managing plants, viewing sensor data, and tracking watering history.
 
 ## Status
 
-✅ **v1 live** — Plants tab, Sensors tab, photo gallery all functional. Running on web (Chrome) and ready for iOS/Android build.
+⚠️ **Shelved** — Plants tab, Sensors tab, photo gallery were functional against the old Railway backend (`https://plant-api-production-7c02.up.railway.app`), which is now replaced by the Cloudflare Worker.
 
 ## Tech Stack
 

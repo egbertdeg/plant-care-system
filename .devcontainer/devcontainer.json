@@ -2,8 +2,11 @@
   "name": "Plant Care System",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
 
-  // Install Cloudflare Worker deps after container creation
-  "postCreateCommand": "cd cloudflare && npm install",
+  // Install Claude Code globally, restore auth credentials, then install Cloudflare Worker deps
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && mkdir -p ~/.claude && echo \"$CLAUDE_CREDENTIALS\" | base64 -d > ~/.claude/.credentials.json && cd cloudflare && npm install",
+
+  // Auto-commit and push every 15 minutes while the Codespace is awake
+  "postStartCommand": "nohup bash /workspaces/plant-care-system/scripts/auto-push.sh &>/tmp/auto-push.log &",
 
   "customizations": {
     "vscode": {
@@ -40,6 +43,9 @@
     "CLOUDFLARE_API_TOKEN": {
       "description": "Cloudflare API token — used by wrangler deploy without needing wrangler login",
       "documentationUrl": "https://developers.cloudflare.com/workers/wrangler/ci-cd/#api-token"
+    },
+    "CLAUDE_CREDENTIALS": {
+      "description": "Base64-encoded ~/.claude/.credentials.json — run: cat ~/.claude/.credentials.json | base64 -w 0"
     }
   }
 }

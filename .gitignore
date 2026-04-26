@@ -17,6 +17,14 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# PWA / Node
+node_modules/
+pwa/dist/
+*.tsbuildinfo
+
+# Claude Code local settings (user-specific)
+.claude/settings.local.json
+
 # Mobile
 .dart_tool/
 .flutter-plugins

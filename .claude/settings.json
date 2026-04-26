@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(pip *)",
+      "Bash(python3 -m pytest *)",
+      "Bash(python3 -m mypy *)",
+      "Bash(python3 -m flake8 *)",
+      "Bash(python3 -m black *)",
+      "Bash(curl *)"
+    ]
+  }
+}
