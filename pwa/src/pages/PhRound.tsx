@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { PLANTS } from '../plants'
 import { addNote } from '../api'
 
-const MOISTURE_VALS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+const PH_VALS = [4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5]
 
-function moistureClass(v: number) {
-  if (v <= 3) return 'm-low'
-  if (v <= 6) return 'm-mid'
-  return 'm-high'
+function phClass(v: number) {
+  if (v <= 5.5) return 'ph-acid'
+  if (v <= 7.0) return 'ph-neutral'
+  return 'ph-alkaline'
 }
 
 function todayStr() {
@@ -19,31 +19,31 @@ type DotStatus = 'pending' | 'loading' | 'done' | 'error'
 type Phase = 'entry' | 'summary' | 'logging' | 'done'
 
 interface Entry {
-  moisture: number | null
+  ph: number | null
   skipped: boolean
 }
 
-export default function SensorRound() {
+export default function PhRound() {
   const navigate = useNavigate()
 
   const [phase,       setPhase]      = useState<Phase>('entry')
   const [currentIdx,  setCurrentIdx] = useState(0)
   const [entries,     setEntries]    = useState<Entry[]>(
-    PLANTS.map(() => ({ moisture: null, skipped: false })),
+    PLANTS.map(() => ({ ph: null, skipped: false })),
   )
   const [dotStatuses, setDotStatuses] = useState<DotStatus[]>(PLANTS.map(() => 'pending'))
   const [errorMsg,    setErrorMsg]    = useState<string | null>(null)
 
   const entry      = entries[currentIdx]
   const plant      = PLANTS[currentIdx]
-  const readyCount = entries.filter(e => !e.skipped && e.moisture !== null).length
+  const readyCount = entries.filter(e => !e.skipped && e.ph !== null).length
 
-  const curMoisture = entry?.moisture ?? null
+  const curPh = entry?.ph ?? null
 
-  // Auto-advance 350ms after moisture is tapped
+  // Auto-advance 350ms after pH is tapped
   useEffect(() => {
     if (phase !== 'entry') return
-    if (curMoisture === null) return
+    if (curPh === null) return
 
     const timer = setTimeout(() => {
       if (currentIdx < PLANTS.length - 1) {
@@ -54,15 +54,15 @@ export default function SensorRound() {
     }, 350)
 
     return () => clearTimeout(timer)
-  }, [curMoisture, currentIdx, phase])
+  }, [curPh, currentIdx, phase])
 
-  function setMoisture(v: number) {
-    setEntries(es => es.map((e, i) => i === currentIdx ? { ...e, moisture: v } : e))
+  function setPh(v: number) {
+    setEntries(es => es.map((e, i) => i === currentIdx ? { ...e, ph: v } : e))
   }
 
   function skipCurrent() {
     setEntries(es => es.map((e, i) =>
-      i === currentIdx ? { ...e, skipped: true, moisture: null } : e,
+      i === currentIdx ? { ...e, skipped: true, ph: null } : e,
     ))
     if (currentIdx < PLANTS.length - 1) {
       setCurrentIdx(currentIdx + 1)
@@ -79,11 +79,11 @@ export default function SensorRound() {
 
     for (let i = 0; i < PLANTS.length; i++) {
       const e = entries[i]
-      if (e.skipped || e.moisture === null) continue
+      if (e.skipped || e.ph === null) continue
 
       setDotStatuses(ss => ss.map((s, j) => j === i ? 'loading' : s))
       try {
-        await addNote(PLANTS[i].id, `[${date}] Sensor: Moisture ${e.moisture}/10`)
+        await addNote(PLANTS[i].id, `[${date}] Sensor: pH ${e.ph}`)
         setDotStatuses(ss => ss.map((s, j) => j === i ? 'done' : s))
       } catch {
         setDotStatuses(ss => ss.map((s, j) => j === i ? 'error' : s))
@@ -106,7 +106,7 @@ export default function SensorRound() {
         <div className="status-screen">
           <div className="status-icon">✅</div>
           <h2>All logged!</h2>
-          <p>{readyCount} moisture reading{readyCount !== 1 ? 's' : ''} saved</p>
+          <p>{readyCount} pH reading{readyCount !== 1 ? 's' : ''} saved</p>
           <button className="btn btn-primary" style={{ width: 200 }} onClick={() => navigate('/')}>
             Back Home
           </button>
@@ -126,7 +126,7 @@ export default function SensorRound() {
         <div className="page-body">
           {PLANTS.map((p, i) => {
             const e = entries[i]
-            if (e.skipped || e.moisture === null) return null
+            if (e.skipped || e.ph === null) return null
             return (
               <div className="log-progress-item" key={p.id}>
                 <div className={`status-dot ${dotStatuses[i]}`}>
@@ -134,7 +134,7 @@ export default function SensorRound() {
                   {dotStatuses[i] === 'error' ? '✗' : ''}
                 </div>
                 <div className="log-plant-id">{p.label}</div>
-                <div className="log-plant-val">Moisture {e.moisture}/10</div>
+                <div className="log-plant-val">pH {e.ph}</div>
               </div>
             )
           })}
@@ -168,7 +168,7 @@ export default function SensorRound() {
                 return (
                   <tr key={p.id} className={e.skipped ? 'skipped' : ''}>
                     <td>{p.label}</td>
-                    <td>{e.skipped ? '—' : `${e.moisture}/10`}</td>
+                    <td>{e.skipped ? '—' : `pH ${e.ph}`}</td>
                     <td>{e.skipped ? 'skip' : '✓'}</td>
                   </tr>
                 )
@@ -204,7 +204,7 @@ export default function SensorRound() {
     <div className="page">
       <div className="page-header">
         <button className="back-btn" onClick={() => navigate('/')}>← Home</button>
-        <h1>Moisture Round</h1>
+        <h1>pH Round</h1>
         <div className="progress-badge">{currentIdx + 1} / {PLANTS.length}</div>
       </div>
       <div className="progress-bar">
@@ -218,13 +218,13 @@ export default function SensorRound() {
         </div>
 
         <div className="card">
-          <div className="card-label">Moisture</div>
+          <div className="card-label">pH</div>
           <div className="tile-grid tile-grid-5">
-            {MOISTURE_VALS.map(v => (
+            {PH_VALS.map(v => (
               <button
                 key={v}
-                className={`tile ${moistureClass(v)}${entry.moisture === v ? ' selected' : ''}`}
-                onClick={() => setMoisture(v)}
+                className={`tile ${phClass(v)}${entry.ph === v ? ' selected' : ''}`}
+                onClick={() => setPh(v)}
               >
                 {v}
               </button>

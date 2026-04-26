@@ -581,3 +581,96 @@ body {
 }
 
 .row > * { flex: 1; }
+
+/* ── Plant Note — textarea ──────────────────────────────────────── */
+
+.note-textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  padding: 12px 14px;
+  resize: none;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.note-textarea:focus {
+  border-color: var(--green);
+}
+
+.note-textarea::placeholder {
+  color: var(--text-dimmer);
+}
+
+/* ── Plant Note — photo slots ──────────────────────────────────────── */
+
+.photo-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.photo-slot {
+  aspect-ratio: 1;
+}
+
+.photo-slot-empty {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 2px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  color: var(--text-dim);
+  transition: border-color 0.12s, background 0.12s, transform 0.08s;
+}
+
+.photo-slot-empty:active {
+  transform: scale(0.95);
+  border-color: var(--green);
+  background: var(--green-dim);
+}
+
+.photo-slot-filled {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  border: 2px solid var(--green);
+}
+
+.photo-slot-filled img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.slot-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
