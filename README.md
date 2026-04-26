@@ -25,7 +25,7 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 - ✅ D1 database (SQLite at the edge)
 - ✅ R2 photo storage
 - ✅ MCP server — Claude.ai connected via Connectors
-- ✅ PWA — 5 workflows: moisture, pH, watering, plant notes, photos (`pwa/`)
+- ✅ PWA — 7 workflows: moisture, watering, photos, plant chat, pH, hero setup, history import (`pwa/`) — deployed to Cloudflare
 - ✅ Weather backend integration code — ready to wire into Cloudflare Worker (`cloudflare/weather-integration/`)
 - ⏳ Flash updated firmware to devices (sensor pod + watering can)
 - ⏳ Deploy weather cron to Cloudflare Worker + run D1 migration
@@ -55,12 +55,18 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 | `POST /plants/{id}/notes` | Append a dated note (atomic) |
 | `GET /plants/{id}/waterings` | Watering history |
 | `POST /plants/{id}/waterings` | Log a watering |
-| `GET /plants/{id}/photos` | List photos |
-| `POST /plants/{id}/photos` | Upload photo to R2 |
-| `GET /readings` | Sensor reading history |
-| `GET /readings/latest` | Most recent reading |
+| `DELETE /plants/{id}/waterings/{eventId}` | Delete a watering event |
+| `GET /plants/{id}/photos[?tier=]` | List photos (filter by tier: hero/round/history) |
+| `POST /plants/{id}/photos` | Upload photo to R2 (fields: file, caption, tier, uploaded_at) |
+| `DELETE /plants/{id}/photos/{photoId}` | Delete a photo |
+| `GET /plants/{id}/readings` | Manual sensor readings (moisture, pH) |
+| `POST /plants/{id}/readings` | Log a manual reading |
+| `GET /plants/needs-water` | Plant IDs with moisture ≤ 4 in past 24h and no watering since |
+| `GET /readings` | ESP32 sensor reading history |
+| `GET /readings/latest` | Most recent ESP32 reading |
 | `GET /weather/daily` | Daily weather history (max temp, precip, humidity, ET₀, GDD) |
 | `GET /weather/latest` | Most recent weather record |
+| `POST /admin/migrate` | Idempotent DDL bootstrap (safe to re-run) |
 
 ## PWA — Outdoor Logging App
 
@@ -73,17 +79,27 @@ npm run dev       # dev server → http://localhost:5173
 npm run build     # production build → dist/ (includes service worker)
 ```
 
-**Five workflows:**
+Both the PWA and REST API are deployed as Cloudflare Workers — no local server needed.
+
+- **PWA**: `https://plant-care-pwa.egbert-degroot.workers.dev`
+- **REST API**: `https://plant-care-api.egbert-degroot.workers.dev`
+
+**Workflows (home screen order):**
 
 | Route | Frequency | What it does |
 |---|---|---|
-| `/sensors` | Weekly | Soil moisture for all 10 plants — tap 1–10, auto-advance, batch-log |
-| `/ph` | Monthly | Soil pH for all 10 plants — tap 4.0–8.5, auto-advance, batch-log |
-| `/water` | After watering | Multi-select plants → AM/PM/Evening → volume → log |
-| `/note` | As needed | Pick one plant → free-text observation → up to 3 photos |
-| `/photos` | Weekly | Per-plant camera capture for all plants → review → upload all |
+| `/sensors` | Weekly | Soil moisture for all plants — tap 1–10, auto-advance, batch-log to `manual_readings` |
+| `/water` | After watering | Multi-select plants → time of day → volume → log; thirsty plants (moisture ≤ 4, unwatered) highlighted blue |
+| `/photos` | Weekly | Per-plant camera capture → review → upload all |
+| `/note` | As needed | Claude chat about a plant — auto-logs a summary note on finish or 5 min idle |
+| `/ph` | Monthly | Soil pH for all plants — tap 4.0–8.5, auto-advance, batch-log to `manual_readings` |
 
-Calls the Cloudflare Worker REST API directly. No proxy needed.
+**Settings (gear icon → `/settings`):**
+
+| Route | What it does |
+|---|---|
+| `/setup` | Per-plant hero photo upload (reference/vendor shot) |
+| `/import` | Bulk camera roll import — reads EXIF timestamps, stores as `tier=history` |
 
 ## Quick Start
 
