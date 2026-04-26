@@ -23,6 +23,12 @@ export default defineConfig({
     },
     workbox: {
       globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+      runtimeCaching: [
+        {
+          urlPattern: /^https:\/\/plant-care-api\.egbert-degroot\.workers\.dev\/.*/i,
+          handler: 'NetworkOnly',
+        },
+      ],
     },
   }), cloudflare()],
 })

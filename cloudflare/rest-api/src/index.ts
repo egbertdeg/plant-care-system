@@ -477,7 +477,7 @@ Plant note categories: Assessment, Watering, Pruning, Health, Feeding, Photo, Bl
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 400,
+          max_tokens: 600,
           messages: [{ role: 'user', content: summarizePrompt }],
         }),
       })
