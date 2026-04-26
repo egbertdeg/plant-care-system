@@ -24,8 +24,11 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 - ✅ D1 database (SQLite at the edge)
 - ✅ R2 photo storage
 - ✅ MCP server — Claude.ai connected via Connectors
-- ✅ PWA — sensor round, watering log, photo capture (`pwa/`)
+- ✅ PWA — 5 workflows: moisture, pH, watering, plant notes, photos (`pwa/`)
+- ✅ Weather backend integration code — ready to wire into Cloudflare Worker (`cloudflare/weather-integration/`)
 - ⏳ Flash updated firmware to devices (sensor pod + watering can)
+- ⏳ Deploy weather cron to Cloudflare Worker + run D1 migration
+- ⏳ Watering alerts (once weather data accumulates)
 - ⏳ ML predictions (future)
 
 ## Live Endpoints
@@ -56,6 +59,8 @@ Worker URL: `https://plant-care-mcp.egbert-degroot.workers.dev`
 | `POST /plants/{id}/photos` | Upload photo |
 | `GET /readings` | Sensor reading history |
 | `GET /readings/latest` | Most recent reading |
+| `GET /weather/daily` | Daily weather history (max temp, precip, humidity, ET₀, GDD) |
+| `GET /weather/latest` | Most recent weather record |
 
 ## PWA — Outdoor Logging App
 
@@ -68,13 +73,15 @@ npm run dev       # dev server → http://localhost:5173
 npm run build     # production build → dist/ (includes service worker)
 ```
 
-**Three workflows:**
+**Five workflows:**
 
-| Route | What it does |
-|---|---|
-| `/sensors` | Rapid moisture + pH entry for all 10 plants, then batch-log |
-| `/water` | Multi-select plants → time of day → volume → log waterings |
-| `/photos` | Per-plant camera capture → review → upload all |
+| Route | Frequency | What it does |
+|---|---|---|
+| `/sensors` | Weekly | Soil moisture for all 10 plants — tap 1–10, auto-advance, batch-log |
+| `/ph` | Monthly | Soil pH for all 10 plants — tap 4.0–8.5, auto-advance, batch-log |
+| `/water` | After watering | Multi-select plants → AM/PM/Evening → volume → log |
+| `/note` | As needed | Pick one plant → free-text observation → up to 3 photos |
+| `/photos` | Weekly | Per-plant camera capture for all plants → review → upload all |
 
 Calls the Cloudflare Worker REST API directly. No proxy needed.
 
@@ -112,7 +119,8 @@ See [firmware/sensor_pod/README.md](firmware/sensor_pod/README.md) and [firmware
 │   ├── sensor_pod/     # Monitors plants — HTTP POST to Cloudflare
 │   └── watering_can/   # Tracks watering events — HTTP POST to Cloudflare
 ├── cloudflare/         # Cloudflare Worker (backend + MCP server)
-├── pwa/                # React PWA — sensor round, watering log, photo capture
+│   └── weather-integration/  # D1 migration + cron handler — ready to integrate
+├── pwa/                # React PWA — 5 workflows (moisture, pH, water, notes, photos)
 ├── backend/            # FastAPI backend — deprecated, replaced by Cloudflare
 ├── mobile/             # Flutter app — shelved
 ├── docs/               # Documentation
