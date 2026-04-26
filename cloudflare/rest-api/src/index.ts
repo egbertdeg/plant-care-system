@@ -227,6 +227,29 @@ export default {
       }
     }
 
+    // GET /garden/notes  POST /garden/notes
+    if (pathname === '/garden/notes') {
+      if (method === 'GET') {
+        const limit    = Math.min(Number(url.searchParams.get('limit') ?? 50), 200)
+        const category = url.searchParams.get('category')
+        const { results } = category
+          ? await env.DB
+              .prepare('SELECT * FROM garden_notes WHERE category = ? ORDER BY recorded_at DESC LIMIT ?')
+              .bind(category, limit).all()
+          : await env.DB
+              .prepare('SELECT * FROM garden_notes ORDER BY recorded_at DESC LIMIT ?')
+              .bind(limit).all()
+        return json(results)
+      }
+      if (method === 'POST') {
+        const { category, body } = await request.json() as { category: string; body: string }
+        if (!category?.trim() || !body?.trim()) return err('category and body are required')
+        await env.DB.prepare('INSERT INTO garden_notes (category, body) VALUES (?, ?)')
+          .bind(category.trim(), body.trim()).run()
+        return json({ ok: true }, 201)
+      }
+    }
+
     // POST /admin/migrate — idempotent, creates/alters tables if missing
     if (method === 'POST' && pathname === '/admin/migrate') {
       await env.DB.prepare(`
@@ -238,6 +261,14 @@ export default {
           unit TEXT NOT NULL DEFAULT '',
           recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
           FOREIGN KEY (plant_id) REFERENCES plants(id)
+        )
+      `).run()
+      await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS garden_notes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          category TEXT NOT NULL DEFAULT 'General',
+          body TEXT NOT NULL,
+          recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
       `).run()
       // Add tier column to plant_photos — ignore error if already exists
@@ -301,6 +332,10 @@ export default {
         .prepare("SELECT type, value, unit, recorded_at FROM manual_readings WHERE plant_id = ? ORDER BY recorded_at DESC LIMIT 6")
         .bind(id).all() as { results: Record<string, unknown>[] }
 
+      const { results: gardenNotes } = await env.DB
+        .prepare('SELECT category, body FROM garden_notes ORDER BY recorded_at DESC LIMIT 10')
+        .all() as { results: Record<string, unknown>[] }
+
       const moistureReadings = readings.filter(r => r.type === 'moisture').slice(0, 3)
       const phReadings      = readings.filter(r => r.type === 'ph').slice(0, 3)
 
@@ -313,6 +348,10 @@ export default {
         ...phReadings.map(r => `pH ${r.value} (${r.recorded_at})`),
       ].join('\n') || 'No recent sensor readings.'
 
+      const gardenContext = gardenNotes.length > 0
+        ? gardenNotes.map(n => `[${n.category}]\n${n.body}`).join('\n\n---\n\n')
+        : 'No garden-wide notes yet.'
+
       const systemPrompt = `You are a knowledgeable plant care assistant for Egbert's NYC front-entrance container garden — 10 outdoor roses and shrubs growing in containers.
 
 Your role in this chat:
@@ -320,6 +359,7 @@ Your role in this chat:
 - Draw on your rose and shrub knowledge to diagnose issues and suggest actions
 - Ask good follow-up questions to understand what the gardener is seeing (e.g. "Which leaves — new growth or old?", "Does the soil feel dry an inch down?")
 - Keep replies short and practical — this is a mobile app used outdoors with dirty hands
+- When the gardener asks about a procedure (e.g. taking a pH reading), refer to the garden-wide knowledge below
 
 About notes: this entire conversation is automatically saved as a plant note when the gardener taps "Finish". You do not need to say you can't update records — the note is created from this chat. Feel free to say things like "I'll note that" or "worth tracking". Just focus on being helpful.
 
@@ -329,7 +369,10 @@ Recent care notes:
 ${notesSnippet}
 
 Recent sensor readings:
-${readingLines}`
+${readingLines}
+
+Garden-wide knowledge:
+${gardenContext}`
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -367,20 +410,21 @@ ${readingLines}`
       if (!plant) return err('Plant not found', 404)
 
       const today = new Date().toISOString().split('T')[0]
-      const summarizePrompt = `You are summarizing a plant care conversation into a single concise note.
+      const summarizePrompt = `You are summarizing a plant care conversation into structured notes.
 
 Plant: ${plant.name} (${plant.label ?? `ID ${id}`})
 Today: ${today}
 
-Conversation to summarize:
+Conversation:
 ${messages.map(m => `${m.role === 'user' ? 'Gardener' : 'Assistant'}: ${m.content}`).join('\n')}
 
-Write exactly one note line in this format:
-[${today}] Category: observation. Action taken if any.
+Write a plant-specific note. If the conversation also revealed something broadly applicable to the garden (a technique, product tip, or general observation worth remembering across all plants), write a garden note too.
 
-Categories: Assessment, Watering, Pruning, Health, Feeding, Photo, Bloom, Sensor, General
+Respond with a JSON object only — no markdown, no explanation:
+{"plant_note":"[${today}] Category: observation.","garden_note":{"category":"Technique|Observation|Climate|Product|General","body":"[${today}] Category: learning."}}
 
-Return only the note line, nothing else.`
+Omit the "garden_note" key entirely if nothing garden-level came up.
+Plant note categories: Assessment, Watering, Pruning, Health, Feeding, Photo, Bloom, Sensor, General`
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -391,7 +435,7 @@ Return only the note line, nothing else.`
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 200,
+          max_tokens: 400,
           messages: [{ role: 'user', content: summarizePrompt }],
         }),
       })
@@ -402,9 +446,21 @@ Return only the note line, nothing else.`
       }
 
       const data = await response.json() as { content: { type: string; text: string }[] }
-      const note = (data.content.find(c => c.type === 'text')?.text ?? '').trim()
+      const raw  = (data.content.find(c => c.type === 'text')?.text ?? '').trim()
+                    .replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
 
-      if (note) {
+      let plantNote  = ''
+      let gardenNote: { category: string; body: string } | null = null
+
+      try {
+        const parsed = JSON.parse(raw)
+        plantNote  = (parsed.plant_note ?? '').trim()
+        gardenNote = parsed.garden_note ?? null
+      } catch {
+        plantNote = raw  // fallback: treat whole response as plant note
+      }
+
+      if (plantNote) {
         await env.DB.prepare(`
           UPDATE plants
           SET notes = CASE
@@ -412,10 +468,15 @@ Return only the note line, nothing else.`
             ELSE notes || char(10) || ?
           END
           WHERE id = ?
-        `).bind(note, note, id).run()
+        `).bind(plantNote, plantNote, id).run()
       }
 
-      return json({ note })
+      if (gardenNote?.body?.trim()) {
+        await env.DB.prepare('INSERT INTO garden_notes (category, body) VALUES (?, ?)')
+          .bind(gardenNote.category ?? 'General', gardenNote.body.trim()).run()
+      }
+
+      return json({ plant_note: plantNote, garden_note: gardenNote ?? undefined })
     }
 
     return err('Not found', 404)

@@ -26,7 +26,8 @@ export default function PlantNote() {
   const [input,     setInput]     = useState('')
   const [sending,   setSending]   = useState(false)
   const [errorMsg,  setErrorMsg]  = useState<string | null>(null)
-  const [savedNote, setSavedNote] = useState('')
+  const [savedNote,   setSavedNote]   = useState('')
+  const [gardenNote,  setGardenNote]  = useState<{ category: string; body: string } | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -54,8 +55,9 @@ export default function PlantNote() {
     if (idleTimer.current) clearTimeout(idleTimer.current)
     setPhase('summarizing')
     try {
-      const note = await summarizeChat(plantId, toApi(messages))
-      setSavedNote(note)
+      const result = await summarizeChat(plantId, toApi(messages))
+      setSavedNote(result.plant_note)
+      setGardenNote(result.garden_note ?? null)
       setPhase('done')
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Failed to save note')
@@ -178,15 +180,27 @@ export default function PlantNote() {
       <div className="page">
         <div className="status-screen">
           <div className="status-icon">📝</div>
-          <h2>Note saved!</h2>
-          <p style={{ fontFamily: 'monospace', fontSize: 13, textAlign: 'left', wordBreak: 'break-word', maxWidth: 320 }}>
-            {savedNote}
-          </p>
+          <h2>Note{gardenNote ? 's' : ''} saved!</h2>
+
+          <div style={{ width: '100%', maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="garden-note-block">
+              <div className="garden-note-label">{selectedPlant?.label ?? 'Plant'} note</div>
+              <div className="garden-note-body">{savedNote}</div>
+            </div>
+
+            {gardenNote && (
+              <div className="garden-note-block garden-note-block--garden">
+                <div className="garden-note-label">Garden note · {gardenNote.category}</div>
+                <div className="garden-note-body">{gardenNote.body}</div>
+              </div>
+            )}
+          </div>
+
           <button className="btn btn-primary" style={{ width: 200 }} onClick={() => navigate('/')}>
             Back Home
           </button>
           <button className="btn btn-ghost" style={{ width: 200 }}
-            onClick={() => { setPhase('pick'); setMessages([]); setInput('') }}>
+            onClick={() => { setPhase('pick'); setMessages([]); setInput(''); setGardenNote(null) }}>
             New chat
           </button>
         </div>

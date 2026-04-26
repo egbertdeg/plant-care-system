@@ -797,6 +797,43 @@ body {
 .chat-send-btn:active { transform: scale(0.91); }
 .chat-send-btn:disabled { opacity: 0.35; pointer-events: none; }
 
+/* ── Garden / plant note blocks (done screen) ────────────────────────────── */
+
+.garden-note-block {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.garden-note-block--garden {
+  border-color: var(--blue);
+  background: var(--blue-dim);
+}
+
+.garden-note-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+}
+
+.garden-note-block--garden .garden-note-label {
+  color: var(--blue);
+}
+
+.garden-note-body {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
 .chat-camera-btn {
   width: 44px;
   height: 44px;

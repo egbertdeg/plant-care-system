@@ -65,14 +65,38 @@ export async function chatWithPlant(plantId: number, messages: ChatMessage[]): P
   return data.reply
 }
 
-// Summarizes a full conversation into a note, saves it, and returns the note text.
-export async function summarizeChat(plantId: number, messages: ChatMessage[]): Promise<string> {
-  const data = await req<{ note: string }>(`/plants/${plantId}/chat/summarize`, {
+export interface GardenNote {
+  id?: number
+  category: string
+  body: string
+  recorded_at?: string
+}
+
+// Summarizes a full conversation. Saves plant note (always) and garden note (if applicable).
+export async function summarizeChat(
+  plantId: number,
+  messages: ChatMessage[],
+): Promise<{ plant_note: string; garden_note?: { category: string; body: string } }> {
+  return req(`/plants/${plantId}/chat/summarize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages }),
   })
-  return data.note
+}
+
+// Returns all garden-wide notes, optionally filtered by category.
+export async function getGardenNotes(category?: string): Promise<GardenNote[]> {
+  const qs = category ? `?category=${encodeURIComponent(category)}` : ''
+  return req<GardenNote[]>(`/garden/notes${qs}`)
+}
+
+// Saves a new garden-wide note.
+export async function addGardenNote(category: string, body: string): Promise<void> {
+  await req('/garden/notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category, body }),
+  })
 }
 
 // Uploads a photo via multipart/form-data.
