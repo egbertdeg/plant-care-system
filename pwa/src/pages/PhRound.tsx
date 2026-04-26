@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PLANTS } from '../plants'
-import { addNote } from '../api'
+import { logReading } from '../api'
 
 const PH_VALS = [4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5]
 
@@ -11,9 +11,6 @@ function phClass(v: number) {
   return 'ph-alkaline'
 }
 
-function todayStr() {
-  return new Date().toISOString().split('T')[0]
-}
 
 type DotStatus = 'pending' | 'loading' | 'done' | 'error'
 type Phase = 'entry' | 'summary' | 'logging' | 'done'
@@ -74,7 +71,6 @@ export default function PhRound() {
   async function logAll() {
     setPhase('logging')
     setErrorMsg(null)
-    const date = todayStr()
     let failCount = 0
 
     for (let i = 0; i < PLANTS.length; i++) {
@@ -83,7 +79,7 @@ export default function PhRound() {
 
       setDotStatuses(ss => ss.map((s, j) => j === i ? 'loading' : s))
       try {
-        await addNote(PLANTS[i].id, `[${date}] Sensor: pH ${e.ph}`)
+        await logReading(PLANTS[i].id, 'pH', e.ph, '')
         setDotStatuses(ss => ss.map((s, j) => j === i ? 'done' : s))
       } catch {
         setDotStatuses(ss => ss.map((s, j) => j === i ? 'error' : s))
@@ -234,7 +230,10 @@ export default function PhRound() {
 
         <div className="row">
           {currentIdx > 0 && (
-            <button className="btn btn-ghost" onClick={() => setCurrentIdx(i => i - 1)}>← Prev</button>
+            <button className="btn btn-ghost" onClick={() => {
+              setEntries(es => es.map((e, i) => i === currentIdx ? { ...e, ph: null } : e))
+              setCurrentIdx(i => i - 1)
+            }}>← Prev</button>
           )}
           <button className="btn btn-ghost" onClick={skipCurrent}>Skip</button>
           {currentIdx === PLANTS.length - 1 && (

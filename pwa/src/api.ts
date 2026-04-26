@@ -31,6 +31,20 @@ export async function logWatering(
   })
 }
 
+// Logs a manual sensor reading (moisture, pH, etc.) to the manual_readings table.
+export async function logReading(
+  plantId: number,
+  type: string,
+  value: number,
+  unit: string,
+): Promise<void> {
+  await req(`/plants/${plantId}/readings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, value, unit }),
+  })
+}
+
 // Uploads a photo via multipart/form-data.
 export async function uploadPhoto(
   plantId: number,

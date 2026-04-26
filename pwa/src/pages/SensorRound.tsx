@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PLANTS } from '../plants'
-import { addNote } from '../api'
+import { logReading } from '../api'
 
 const MOISTURE_VALS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
@@ -11,9 +11,6 @@ function moistureClass(v: number) {
   return 'm-high'
 }
 
-function todayStr() {
-  return new Date().toISOString().split('T')[0]
-}
 
 type DotStatus = 'pending' | 'loading' | 'done' | 'error'
 type Phase = 'entry' | 'summary' | 'logging' | 'done'
@@ -74,7 +71,6 @@ export default function SensorRound() {
   async function logAll() {
     setPhase('logging')
     setErrorMsg(null)
-    const date = todayStr()
     let failCount = 0
 
     for (let i = 0; i < PLANTS.length; i++) {
@@ -83,7 +79,7 @@ export default function SensorRound() {
 
       setDotStatuses(ss => ss.map((s, j) => j === i ? 'loading' : s))
       try {
-        await addNote(PLANTS[i].id, `[${date}] Sensor: Moisture ${e.moisture}/10`)
+        await logReading(PLANTS[i].id, 'moisture', e.moisture, '/10')
         setDotStatuses(ss => ss.map((s, j) => j === i ? 'done' : s))
       } catch {
         setDotStatuses(ss => ss.map((s, j) => j === i ? 'error' : s))
@@ -234,7 +230,10 @@ export default function SensorRound() {
 
         <div className="row">
           {currentIdx > 0 && (
-            <button className="btn btn-ghost" onClick={() => setCurrentIdx(i => i - 1)}>← Prev</button>
+            <button className="btn btn-ghost" onClick={() => {
+              setEntries(es => es.map((e, i) => i === currentIdx ? { ...e, moisture: null } : e))
+              setCurrentIdx(i => i - 1)
+            }}>← Prev</button>
           )}
           <button className="btn btn-ghost" onClick={skipCurrent}>Skip</button>
           {currentIdx === PLANTS.length - 1 && (

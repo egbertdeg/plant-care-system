@@ -156,6 +156,47 @@ export default {
       return json({ ok: true })
     }
 
+    // GET /plants/:id/readings  POST /plants/:id/readings
+    const readingsMatch = pathname.match(/^\/plants\/(\d+)\/readings$/)
+    if (readingsMatch) {
+      const id = Number(readingsMatch[1])
+
+      if (method === 'GET') {
+        const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200)
+        const { results } = await env.DB
+          .prepare('SELECT * FROM manual_readings WHERE plant_id = ? ORDER BY recorded_at DESC LIMIT ?')
+          .bind(id, limit)
+          .all()
+        return json(results)
+      }
+
+      if (method === 'POST') {
+        const body = await request.json() as { type: string; value: number; unit?: string; recorded_at?: string }
+        if (!body.type || body.value === undefined) return err('type and value are required')
+        await env.DB.prepare(`
+          INSERT INTO manual_readings (plant_id, type, value, unit, recorded_at)
+          VALUES (?, ?, ?, ?, COALESCE(?, datetime('now')))
+        `).bind(id, body.type, body.value, body.unit ?? '', body.recorded_at ?? null).run()
+        return json({ ok: true }, 201)
+      }
+    }
+
+    // POST /admin/migrate — idempotent, creates tables if missing
+    if (method === 'POST' && pathname === '/admin/migrate') {
+      await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS manual_readings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          plant_id INTEGER NOT NULL,
+          type TEXT NOT NULL,
+          value REAL NOT NULL,
+          unit TEXT NOT NULL DEFAULT '',
+          recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (plant_id) REFERENCES plants(id)
+        )
+      `).run()
+      return json({ ok: true, message: 'migration complete' })
+    }
+
     // GET /readings  GET /readings/latest
     if (method === 'GET' && pathname === '/readings/latest') {
       const row = await env.DB
