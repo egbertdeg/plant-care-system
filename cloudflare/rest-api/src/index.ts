@@ -5,7 +5,7 @@ interface Env {
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
@@ -138,6 +138,14 @@ export default {
 
         return json({ ok: true, r2_key: r2Key }, 201)
       }
+    }
+
+    // DELETE /plants/:id/photos/:photoId
+    const photoDeleteMatch = pathname.match(/^\/plants\/(\d+)\/photos\/(\d+)$/)
+    if (photoDeleteMatch && method === 'DELETE') {
+      const photoId = Number(photoDeleteMatch[2])
+      await env.DB.prepare('DELETE FROM plant_photos WHERE id = ?').bind(photoId).run()
+      return json({ ok: true })
     }
 
     // GET /readings  GET /readings/latest
