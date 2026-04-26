@@ -1,6 +1,12 @@
 interface Env {
   DB: D1Database
   PHOTOS: R2Bucket
+  ANTHROPIC_API_KEY: string
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 const CORS = {
@@ -279,6 +285,137 @@ export default {
         .then(r => r.results)
         .catch(() => [])
       return json(results)
+    }
+
+    // POST /plants/:id/chat — one chat turn, returns { reply: string }
+    const chatMatch = pathname.match(/^\/plants\/(\d+)\/chat$/)
+    if (chatMatch && method === 'POST') {
+      const id = Number(chatMatch[1])
+      const { messages } = await request.json() as { messages: ChatMessage[] }
+      if (!Array.isArray(messages)) return err('messages array required')
+
+      const plant = await env.DB.prepare('SELECT * FROM plants WHERE id = ?').bind(id).first() as Record<string, unknown> | null
+      if (!plant) return err('Plant not found', 404)
+
+      const { results: readings } = await env.DB
+        .prepare("SELECT type, value, unit, recorded_at FROM manual_readings WHERE plant_id = ? ORDER BY recorded_at DESC LIMIT 6")
+        .bind(id).all() as { results: Record<string, unknown>[] }
+
+      const moistureReadings = readings.filter(r => r.type === 'moisture').slice(0, 3)
+      const phReadings      = readings.filter(r => r.type === 'ph').slice(0, 3)
+
+      const notesSnippet = typeof plant.notes === 'string' && plant.notes.trim()
+        ? plant.notes.trim().split('\n').slice(-5).join('\n')
+        : 'No notes yet.'
+
+      const readingLines = [
+        ...moistureReadings.map(r => `Moisture ${r.value} (${r.recorded_at})`),
+        ...phReadings.map(r => `pH ${r.value} (${r.recorded_at})`),
+      ].join('\n') || 'No recent sensor readings.'
+
+      const systemPrompt = `You are a knowledgeable plant care assistant for Egbert's NYC front-entrance container garden — 10 outdoor roses and shrubs growing in containers.
+
+Your role in this chat:
+- Talk about this specific plant: its health, appearance, care needs, and any problems
+- Draw on your rose and shrub knowledge to diagnose issues and suggest actions
+- Ask good follow-up questions to understand what the gardener is seeing (e.g. "Which leaves — new growth or old?", "Does the soil feel dry an inch down?")
+- Keep replies short and practical — this is a mobile app used outdoors with dirty hands
+
+About notes: this entire conversation is automatically saved as a plant note when the gardener taps "Finish". You do not need to say you can't update records — the note is created from this chat. Feel free to say things like "I'll note that" or "worth tracking". Just focus on being helpful.
+
+Plant: ${plant.name} (${plant.label ?? `ID ${id}`})
+
+Recent care notes:
+${notesSnippet}
+
+Recent sensor readings:
+${readingLines}`
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          system: systemPrompt,
+          messages,
+        }),
+      })
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText)
+        return err(`Claude API error: ${text}`, 502)
+      }
+
+      const data = await response.json() as { content: { type: string; text: string }[] }
+      const reply = data.content.find(c => c.type === 'text')?.text ?? ''
+      return json({ reply })
+    }
+
+    // POST /plants/:id/chat/summarize — summarize conversation → save note → return { note }
+    const summarizeMatch = pathname.match(/^\/plants\/(\d+)\/chat\/summarize$/)
+    if (summarizeMatch && method === 'POST') {
+      const id = Number(summarizeMatch[1])
+      const { messages } = await request.json() as { messages: ChatMessage[] }
+      if (!Array.isArray(messages) || messages.length === 0) return err('messages array required')
+
+      const plant = await env.DB.prepare('SELECT name, label FROM plants WHERE id = ?').bind(id).first() as Record<string, unknown> | null
+      if (!plant) return err('Plant not found', 404)
+
+      const today = new Date().toISOString().split('T')[0]
+      const summarizePrompt = `You are summarizing a plant care conversation into a single concise note.
+
+Plant: ${plant.name} (${plant.label ?? `ID ${id}`})
+Today: ${today}
+
+Conversation to summarize:
+${messages.map(m => `${m.role === 'user' ? 'Gardener' : 'Assistant'}: ${m.content}`).join('\n')}
+
+Write exactly one note line in this format:
+[${today}] Category: observation. Action taken if any.
+
+Categories: Assessment, Watering, Pruning, Health, Feeding, Photo, Bloom, Sensor, General
+
+Return only the note line, nothing else.`
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 200,
+          messages: [{ role: 'user', content: summarizePrompt }],
+        }),
+      })
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText)
+        return err(`Claude API error: ${text}`, 502)
+      }
+
+      const data = await response.json() as { content: { type: string; text: string }[] }
+      const note = (data.content.find(c => c.type === 'text')?.text ?? '').trim()
+
+      if (note) {
+        await env.DB.prepare(`
+          UPDATE plants
+          SET notes = CASE
+            WHEN notes IS NULL OR notes = '' THEN ?
+            ELSE notes || char(10) || ?
+          END
+          WHERE id = ?
+        `).bind(note, note, id).run()
+      }
+
+      return json({ note })
     }
 
     return err('Not found', 404)

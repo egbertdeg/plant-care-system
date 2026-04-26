@@ -20,16 +20,16 @@ const WORKFLOWS = [
     desc:  'Rapid photo capture for all plants — weekly',
   },
   {
-    to:    '/note',
-    icon:  '📝',
-    title: 'Plant Note',
-    desc:  'Add an observation + up to 3 photos for one plant',
-  },
-  {
     to:    '/ph',
     icon:  '🧪',
     title: 'pH Round',
     desc:  'Soil pH for all 10 plants — monthly-ish',
+  },
+  {
+    to:    '/note',
+    icon:  '💬',
+    title: 'Plant Chat',
+    desc:  'Discuss observations, plan care.',
   },
 ]
 

@@ -1,77 +1,174 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PLANTS } from '../plants'
-import { addNote, uploadPhoto } from '../api'
+import { ACTIVE_PLANTS } from '../plants'
+import { chatWithPlant, summarizeChat, uploadPhoto, ChatMessage } from '../api'
 
-function todayStr() {
-  return new Date().toISOString().split('T')[0]
+const IDLE_MS = 5 * 60 * 1000
+
+type Phase = 'pick' | 'chat' | 'summarizing' | 'done'
+
+interface UIMessage {
+  role: 'user' | 'assistant'
+  content: string      // what Claude sees
+  photoUrl?: string    // local object URL for display only
 }
 
-type Phase = 'form' | 'submitting' | 'done'
-
-interface Slot {
-  file: File
-  url: string
+function toApi(msgs: UIMessage[]): ChatMessage[] {
+  return msgs.map(({ role, content }) => ({ role, content }))
 }
 
 export default function PlantNote() {
-  const navigate  = useNavigate()
-  const inputRefs = [
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-  ]
+  const navigate = useNavigate()
 
-  const [plantId,  setPlantId]  = useState<number | null>(null)
-  const [comment,  setComment]  = useState('')
-  const [slots,    setSlots]    = useState<(Slot | null)[]>([null, null, null])
-  const [phase,    setPhase]    = useState<Phase>('form')
-  const [progress, setProgress] = useState('')
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [phase,     setPhase]     = useState<Phase>('pick')
+  const [plantId,   setPlantId]   = useState<number | null>(null)
+  const [messages,  setMessages]  = useState<UIMessage[]>([])
+  const [input,     setInput]     = useState('')
+  const [sending,   setSending]   = useState(false)
+  const [errorMsg,  setErrorMsg]  = useState<string | null>(null)
+  const [savedNote, setSavedNote] = useState('')
 
-  const selectedPlant = PLANTS.find(p => p.id === plantId) ?? null
-  const photoCount    = slots.filter(Boolean).length
-  const canSubmit     = plantId !== null && comment.trim().length > 0
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const finishRef = useRef<() => void>(() => {})
 
-  function handleCapture(slotIdx: number, e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const url = URL.createObjectURL(file)
-    setSlots(s => s.map((v, i) => i === slotIdx ? { file, url } : v))
-    e.target.value = ''
+  const selectedPlant = ACTIVE_PLANTS.find(p => p.id === plantId) ?? null
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const resetIdleTimer = useCallback(() => {
+    if (idleTimer.current) clearTimeout(idleTimer.current)
+    idleTimer.current = setTimeout(() => finishRef.current(), IDLE_MS)
+  }, [])
+
+  useEffect(() => {
+    if (phase === 'chat') resetIdleTimer()
+    return () => { if (idleTimer.current) clearTimeout(idleTimer.current) }
+  }, [phase, resetIdleTimer])
+
+  async function finish() {
+    if (!plantId || messages.length === 0) { navigate('/'); return }
+    if (idleTimer.current) clearTimeout(idleTimer.current)
+    setPhase('summarizing')
+    try {
+      const note = await summarizeChat(plantId, toApi(messages))
+      setSavedNote(note)
+      setPhase('done')
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Failed to save note')
+      setPhase('chat')
+    }
   }
 
-  function removeSlot(slotIdx: number) {
-    setSlots(s => s.map((v, i) => i === slotIdx ? null : v))
-  }
+  // keep finishRef pointing at latest finish (avoids stale closure in idle timer)
+  useEffect(() => { finishRef.current = finish })
 
-  async function submit() {
-    if (!plantId || !comment.trim()) return
-    setPhase('submitting')
+  function startChat(id: number) {
+    setPlantId(id)
+    setMessages([])
+    setInput('')
     setErrorMsg(null)
+    setPhase('chat')
+  }
 
-    const date  = todayStr()
-    const plant = PLANTS.find(p => p.id === plantId)!
+  async function send() {
+    const text = input.trim()
+    if (!text || sending || !plantId) return
+    setInput('')
+    setErrorMsg(null)
+    resetIdleTimer()
+
+    const next: UIMessage[] = [...messages, { role: 'user', content: text }]
+    setMessages(next)
+    setSending(true)
 
     try {
-      setProgress('Saving note…')
-      await addNote(plantId, `[${date}] General: ${comment.trim()}`)
-
-      const photos = slots.filter((s): s is Slot => s !== null)
-      for (let i = 0; i < photos.length; i++) {
-        setProgress(`Uploading photo ${i + 1} of ${photos.length}…`)
-        await uploadPhoto(
-          plantId,
-          photos[i].file,
-          `${plant.label} - ${date} - note`,
-        )
-      }
-
-      setPhase('done')
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to save')
-      setPhase('form')
+      const reply = await chatWithPlant(plantId, toApi(next))
+      setMessages(m => [...m, { role: 'assistant', content: reply }])
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Send failed')
+    } finally {
+      setSending(false)
+      resetIdleTimer()
     }
+  }
+
+  async function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !plantId || sending) return
+    e.target.value = ''
+
+    const localUrl = URL.createObjectURL(file)
+    setSending(true)
+    setErrorMsg(null)
+    resetIdleTimer()
+
+    try {
+      const date = new Date().toISOString().split('T')[0]
+      await uploadPhoto(plantId, file, `${selectedPlant?.label} - ${date} - chat`)
+
+      const next: UIMessage[] = [
+        ...messages,
+        { role: 'user', content: 'I just took a photo of the plant.', photoUrl: localUrl },
+      ]
+      setMessages(next)
+
+      const reply = await chatWithPlant(plantId, toApi(next))
+      setMessages(m => [...m, { role: 'assistant', content: reply }])
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Photo upload failed')
+    } finally {
+      setSending(false)
+      resetIdleTimer()
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+
+  // ── Plant picker ─────────────────────────────────────────────────────────────
+
+  if (phase === 'pick') {
+    return (
+      <div className="page">
+        <div className="page-header">
+          <button className="back-btn" onClick={() => navigate('/')}>← Home</button>
+          <h1>Plant Chat</h1>
+        </div>
+        <div className="page-body">
+          <div className="section-label">Which plant?</div>
+          <div className="plant-grid">
+            {ACTIVE_PLANTS.map(p => (
+              <button key={p.id} className="plant-tile" onClick={() => startChat(p.id)}>
+                <span className="pt-label">{p.label}</span>
+                <span className="pt-name">{p.shortName}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Summarizing ──────────────────────────────────────────────────────────────
+
+  if (phase === 'summarizing') {
+    return (
+      <div className="page">
+        <div className="status-screen">
+          <div className="status-icon" style={{ animation: 'pulse 1s infinite' }}>✍️</div>
+          <h2>Saving note…</h2>
+          <p>Summarizing your conversation.</p>
+        </div>
+      </div>
+    )
   }
 
   // ── Done ─────────────────────────────────────────────────────────────────────
@@ -82,123 +179,92 @@ export default function PlantNote() {
         <div className="status-screen">
           <div className="status-icon">📝</div>
           <h2>Note saved!</h2>
-          <p>
-            {selectedPlant?.label} — {comment.trim().slice(0, 60)}{comment.length > 60 ? '…' : ''}
+          <p style={{ fontFamily: 'monospace', fontSize: 13, textAlign: 'left', wordBreak: 'break-word', maxWidth: 320 }}>
+            {savedNote}
           </p>
           <button className="btn btn-primary" style={{ width: 200 }} onClick={() => navigate('/')}>
             Back Home
           </button>
           <button className="btn btn-ghost" style={{ width: 200 }}
-            onClick={() => {
-              setComment('')
-              setSlots([null, null, null])
-              setPhase('form')
-            }}>
-            Add another
+            onClick={() => { setPhase('pick'); setMessages([]); setInput('') }}>
+            New chat
           </button>
         </div>
       </div>
     )
   }
 
-  // ── Submitting ────────────────────────────────────────────────────────────────
-
-  if (phase === 'submitting') {
-    return (
-      <div className="page">
-        <div className="status-screen">
-          <div className="status-icon" style={{ fontSize: 48, animation: 'pulse 1s infinite' }}>⏳</div>
-          <h2>{progress}</h2>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Form ─────────────────────────────────────────────────────────────────────
+  // ── Chat ─────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="page">
+    <div className="page chat-page">
       <div className="page-header">
-        <button className="back-btn" onClick={() => navigate('/')}>← Home</button>
-        <h1>Plant Note</h1>
+        <button className="back-btn" onClick={() => setPhase('pick')}>← Plants</button>
+        <h1 style={{ flex: 1 }}>{selectedPlant?.label} · {selectedPlant?.shortName}</h1>
+        <button
+          className="btn btn-secondary"
+          style={{ minHeight: 36, fontSize: 14, padding: '0 12px' }}
+          onClick={finish}
+        >
+          Finish
+        </button>
       </div>
 
-      <div className="page-body">
-        {errorMsg && <div className="error-banner">{errorMsg}</div>}
+      {errorMsg && <div className="error-banner" style={{ margin: '8px 16px 0' }}>{errorMsg}</div>}
 
-        {/* Plant picker */}
-        <div>
-          <div className="section-label">Plant</div>
-          <div className="plant-grid">
-            {PLANTS.map(p => (
-              <button
-                key={p.id}
-                className={`plant-tile${plantId === p.id ? ' selected' : ''}`}
-                onClick={() => setPlantId(p.id)}
-              >
-                <span className="pt-label">{p.label}</span>
-                <span className="pt-name">{p.shortName}</span>
-              </button>
-            ))}
+      <div className="chat-messages">
+        {messages.length === 0 && (
+          <div className="chat-empty">
+            <p>What's going on with {selectedPlant?.name}?</p>
           </div>
-        </div>
-
-        {/* Comment */}
-        <div>
-          <div className="section-label">Observation</div>
-          <textarea
-            className="note-textarea"
-            placeholder="What did you notice?"
-            value={comment}
-            onChange={e => setComment(e.target.value)}
-            rows={4}
-          />
-        </div>
-
-        {/* Photo slots */}
-        <div>
-          <div className="section-label">Photos (optional — up to 3)</div>
-          <div className="photo-slots">
-            {slots.map((slot, i) => (
-              <div key={i} className="photo-slot">
-                <input
-                  ref={inputRefs[i]}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  style={{ display: 'none' }}
-                  onChange={e => handleCapture(i, e)}
-                />
-                {slot ? (
-                  <div className="photo-slot-filled" onClick={() => removeSlot(i)}>
-                    <img src={slot.url} alt={`photo ${i + 1}`} />
-                    <div className="slot-remove">✕</div>
-                  </div>
-                ) : (
-                  <button
-                    className="photo-slot-empty"
-                    onClick={() => inputRefs[i].current?.click()}
-                  >
-                    <span style={{ fontSize: 28 }}>📷</span>
-                    <span style={{ fontSize: 12 }}>Add</span>
-                  </button>
-                )}
-              </div>
-            ))}
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={`chat-bubble chat-bubble-${m.role}`}>
+            {m.photoUrl
+              ? <img src={m.photoUrl} alt="plant photo" className="chat-photo-thumb" />
+              : m.content
+            }
           </div>
-          {photoCount > 0 && (
-            <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 6 }}>
-              Tap a photo to remove it.
-            </p>
-          )}
-        </div>
+        ))}
+        {sending && (
+          <div className="chat-bubble chat-bubble-assistant chat-typing">
+            <span /><span /><span />
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
 
+      <div className="chat-input-row">
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={handlePhoto}
+        />
         <button
-          className="btn btn-primary btn-full btn-lg"
-          disabled={!canSubmit}
-          onClick={submit}
+          className="chat-camera-btn"
+          disabled={sending}
+          onClick={() => cameraRef.current?.click()}
         >
-          Save note{photoCount > 0 ? ` + ${photoCount} photo${photoCount > 1 ? 's' : ''}` : ''}
+          📷
+        </button>
+        <textarea
+          className="chat-input"
+          placeholder="What did you notice?"
+          value={input}
+          rows={1}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={sending}
+        />
+        <button
+          className="chat-send-btn"
+          disabled={!input.trim() || sending}
+          onClick={send}
+        >
+          ↑
         </button>
       </div>
     </div>

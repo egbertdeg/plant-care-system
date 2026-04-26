@@ -50,6 +50,31 @@ export async function logReading(
   })
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+// Sends one chat turn for a plant and returns the assistant reply.
+export async function chatWithPlant(plantId: number, messages: ChatMessage[]): Promise<string> {
+  const data = await req<{ reply: string }>(`/plants/${plantId}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages }),
+  })
+  return data.reply
+}
+
+// Summarizes a full conversation into a note, saves it, and returns the note text.
+export async function summarizeChat(plantId: number, messages: ChatMessage[]): Promise<string> {
+  const data = await req<{ note: string }>(`/plants/${plantId}/chat/summarize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages }),
+  })
+  return data.note
+}
+
 // Uploads a photo via multipart/form-data.
 export async function uploadPhoto(
   plantId: number,
