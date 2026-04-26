@@ -83,27 +83,63 @@ export default {
       return json({ ok: true })
     }
 
-    // GET /plants/:id/waterings  POST /plants/:id/waterings
-    // Table columns: id, plant_id, volume_ml, source, notes, timestamp
-    const wateringsMatch = pathname.match(/^\/plants\/(\d+)\/waterings$/)
-    if (wateringsMatch) {
-      const id = Number(wateringsMatch[1])
+    // GET /plants/:id/care  POST /plants/:id/care
+    const careMatch = pathname.match(/^\/plants\/(\d+)\/care$/)
+    if (careMatch) {
+      const id = Number(careMatch[1])
 
       if (method === 'GET') {
         const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200)
         const { results } = await env.DB
-          .prepare('SELECT * FROM watering_events WHERE plant_id = ? ORDER BY timestamp DESC LIMIT ?')
-          .bind(id, limit)
-          .all()
+          .prepare('SELECT * FROM care_events WHERE plant_id = ? ORDER BY recorded_at DESC LIMIT ?')
+          .bind(id, limit).all()
         return json(results)
       }
 
       if (method === 'POST') {
-        const body = await request.json() as { volume_ml?: number | null; notes?: string }
+        const body = await request.json() as {
+          watered: boolean
+          volume_ml?: number | null
+          fertilizer?: 'liquid' | 'rose-tone' | null
+          pruned?: boolean
+          notes?: string | null
+        }
+
         await env.DB.prepare(`
-          INSERT INTO watering_events (plant_id, volume_ml, source, notes)
-          VALUES (?, ?, 'manual', ?)
-        `).bind(id, body.volume_ml ?? null, body.notes ?? null).run()
+          INSERT INTO care_events (plant_id, watered, volume_ml, fertilizer, pruned, notes)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(
+          id,
+          body.watered ? 1 : 0,
+          body.watered ? (body.volume_ml ?? null) : null,
+          body.fertilizer ?? null,
+          body.pruned ? 1 : 0,
+          body.notes?.trim() || null,
+        ).run()
+
+        // Auto-append a dated note to plants.notes
+        const today = new Date().toISOString().split('T')[0]
+        const parts: string[] = []
+        if (body.watered && body.volume_ml) parts.push(`${body.volume_ml}ml water`)
+        else if (!body.watered) parts.push('no water')
+        if (body.fertilizer === 'liquid')     parts.push('liquid feed')
+        if (body.fertilizer === 'rose-tone')  parts.push('Rose-Tone')
+        if (body.pruned)                       parts.push('pruned')
+        if (body.notes?.trim())               parts.push(body.notes.trim())
+
+        let category = 'General'
+        if (body.watered)                                               category = 'Watering'
+        else if (body.fertilizer && !body.pruned)                       category = 'Feeding'
+        else if (!body.fertilizer && body.pruned)                       category = 'Pruning'
+
+        const note = `[${today}] ${category}: ${parts.join(', ')}.`
+        await env.DB.prepare(`
+          UPDATE plants SET notes = CASE
+            WHEN notes IS NULL OR notes = '' THEN ?
+            ELSE notes || char(10) || ?
+          END WHERE id = ?
+        `).bind(note, note, id).run()
+
         return json({ ok: true }, 201)
       }
     }
@@ -177,14 +213,6 @@ export default {
       return json({ ok: true })
     }
 
-    // DELETE /plants/:id/waterings/:eventId
-    const wateringDeleteMatch = pathname.match(/^\/plants\/(\d+)\/waterings\/(\d+)$/)
-    if (wateringDeleteMatch && method === 'DELETE') {
-      const eventId = Number(wateringDeleteMatch[2])
-      await env.DB.prepare('DELETE FROM watering_events WHERE id = ?').bind(eventId).run()
-      return json({ ok: true })
-    }
-
     // GET /plants/needs-water — plant_ids with moisture ≤ 4 in past 24h and no watering since
     if (method === 'GET' && pathname === '/plants/needs-water') {
       const { results } = await env.DB.prepare(`
@@ -194,9 +222,10 @@ export default {
           AND mr.value <= 4
           AND mr.recorded_at >= datetime('now', '-24 hours')
           AND NOT EXISTS (
-            SELECT 1 FROM watering_events we
-            WHERE we.plant_id = mr.plant_id
-              AND we.timestamp > mr.recorded_at
+            SELECT 1 FROM care_events ce
+            WHERE ce.plant_id = mr.plant_id
+              AND ce.watered = 1
+              AND ce.recorded_at > mr.recorded_at
           )
       `).all()
       return json(results.map((r: Record<string, unknown>) => r.plant_id))
@@ -269,6 +298,19 @@ export default {
           category TEXT NOT NULL DEFAULT 'General',
           body TEXT NOT NULL,
           recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `).run()
+      await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS care_events (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          plant_id    INTEGER NOT NULL,
+          watered     INTEGER NOT NULL DEFAULT 0,
+          volume_ml   REAL,
+          fertilizer  TEXT,
+          pruned      INTEGER NOT NULL DEFAULT 0,
+          notes       TEXT,
+          recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (plant_id) REFERENCES plants(id)
         )
       `).run()
       // Add tier column to plant_photos — ignore error if already exists

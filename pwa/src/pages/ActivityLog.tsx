@@ -1,44 +1,39 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ACTIVE_PLANTS } from '../plants'
-import { logWatering, getThirstyPlants } from '../api'
+import { logCareEvent, getThirstyPlants } from '../api'
 
-type TimeOfDay = 'AM' | 'PM' | 'Evening'
 type DotStatus = 'pending' | 'loading' | 'done' | 'error'
 
-const TIME_OPTIONS: { value: TimeOfDay; icon: string; label: string }[] = [
-  { value: 'AM',      icon: '🌅', label: 'AM'      },
-  { value: 'PM',      icon: '☀️',  label: 'PM'      },
-  { value: 'Evening', icon: '🌙', label: 'Evening' },
-]
+// undefined = nothing chosen yet (blocks submit); null = No Water chosen
+type WateringChoice = number | null | undefined
 
 const VOLUME_OPTIONS: { label: string; value: number | null }[] = [
-  { label: 'Skip',  value: null  },
-  { label: '250ml', value: 250   },
-  { label: '500ml', value: 500   },
-  { label: '750ml', value: 750   },
-  { label: '1 L',   value: 1000  },
-  { label: 'Soaked', value: 2000  },
+  { label: '250ml',    value: 250  },
+  { label: '500ml',    value: 500  },
+  { label: '750ml',    value: 750  },
+  { label: '1 L',      value: 1000 },
+  { label: 'Soaked',   value: 2000 },
+  { label: 'No Water', value: null },
 ]
 
-const NOTE_OPTIONS = [
-  { label: '—',              value: ''               },
-  { label: '+ fertiliser',  value: 'with fertiliser' },
-  { label: '+ fungicide',   value: 'with fungicide'  },
-  { label: '+ neem oil',    value: 'with neem oil'   },
+const ACTIVITY_OPTIONS: { label: string; key: 'liquid' | 'rose-tone' | 'pruned' }[] = [
+  { label: 'Liquid Feed', key: 'liquid'     },
+  { label: 'Rose-Tone',   key: 'rose-tone'  },
+  { label: 'Pruning',     key: 'pruned'     },
 ]
 
-export default function WaterLog() {
+export default function ActivityLog() {
   const navigate = useNavigate()
 
-  const [selected,   setSelected]   = useState<Set<number>>(new Set())
-  const [timeOfDay,  setTimeOfDay]  = useState<TimeOfDay | null>(null)
-  const [volumeMl,   setVolumeMl]   = useState<number | null | undefined>(undefined) // undefined = not chosen
-  const [extraNote,  setExtraNote]  = useState('')
-  const [phase,      setPhase]      = useState<'form' | 'logging' | 'done'>('form')
-  const [dots,       setDots]       = useState<DotStatus[]>(ACTIVE_PLANTS.map(() => 'pending'))
-  const [errorMsg,   setErrorMsg]   = useState<string | null>(null)
-  const [thirstyIds, setThirstyIds] = useState<Set<number>>(new Set())
+  const [selected,    setSelected]    = useState<Set<number>>(new Set())
+  const [watering,    setWatering]    = useState<WateringChoice>(undefined)
+  const [activities,  setActivities]  = useState<Set<string>>(new Set())
+  const [notes,       setNotes]       = useState('')
+  const [phase,       setPhase]       = useState<'form' | 'logging' | 'done'>('form')
+  const [dots,        setDots]        = useState<DotStatus[]>(ACTIVE_PLANTS.map(() => 'pending'))
+  const [errorMsg,    setErrorMsg]    = useState<string | null>(null)
+  const [thirstyIds,  setThirstyIds]  = useState<Set<number>>(new Set())
 
   useEffect(() => {
     getThirstyPlants().then(ids => setThirstyIds(new Set(ids))).catch(() => {})
@@ -52,23 +47,30 @@ export default function WaterLog() {
     })
   }
 
-  function selectAll() {
-    setSelected(new Set(ACTIVE_PLANTS.map(p => p.id)))
+  function toggleActivity(key: string) {
+    setActivities(s => {
+      const next = new Set(s)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
   }
 
-  const canLog = selected.size > 0 && timeOfDay !== null && volumeMl !== undefined
+  const canLog = selected.size > 0 && watering !== undefined
 
   async function doLog() {
-    if (!timeOfDay) return
     setPhase('logging')
     setErrorMsg(null)
 
-    const notes = [
-      `Watered ${timeOfDay}`,
-      extraNote || null,
-    ].filter(Boolean).join(', ')
+    const event = {
+      watered:    watering !== null,
+      volume_ml:  watering ?? null,
+      fertilizer: activities.has('liquid')    ? 'liquid'    as const
+                : activities.has('rose-tone') ? 'rose-tone' as const
+                : null,
+      pruned: activities.has('pruned'),
+      notes:  notes.trim() || null,
+    }
 
-    const vol = volumeMl ?? null
     let failCount = 0
 
     for (let i = 0; i < ACTIVE_PLANTS.length; i++) {
@@ -77,7 +79,7 @@ export default function WaterLog() {
 
       setDots(ds => ds.map((d, j) => j === i ? 'loading' : d))
       try {
-        await logWatering(p.id, vol, notes)
+        await logCareEvent(p.id, event)
         setDots(ds => ds.map((d, j) => j === i ? 'done' : d))
       } catch {
         setDots(ds => ds.map((d, j) => j === i ? 'error' : d))
@@ -88,8 +90,18 @@ export default function WaterLog() {
     if (failCount === 0) {
       setPhase('done')
     } else {
-      setErrorMsg(`${failCount} watering${failCount > 1 ? 's' : ''} failed to log.`)
+      setErrorMsg(`${failCount} event${failCount > 1 ? 's' : ''} failed to log.`)
     }
+  }
+
+  function logLabel() {
+    const parts: string[] = []
+    if (watering !== null && watering !== undefined) parts.push('water')
+    if (activities.has('liquid'))    parts.push('liquid feed')
+    if (activities.has('rose-tone')) parts.push('Rose-Tone')
+    if (activities.has('pruned'))    parts.push('pruning')
+    if (parts.length === 0)          parts.push('no water')
+    return parts.join(' + ')
   }
 
   // ── Done ─────────────────────────────────────────────────────────────────────
@@ -98,11 +110,19 @@ export default function WaterLog() {
     return (
       <div className="page">
         <div className="status-screen">
-          <div className="status-icon">💧</div>
-          <h2>Watering logged!</h2>
+          <div className="status-icon">✅</div>
+          <h2>Activity logged!</h2>
           <p>{selected.size} plant{selected.size !== 1 ? 's' : ''} recorded</p>
           <button className="btn btn-primary" style={{ width: 200 }} onClick={() => navigate('/')}>
             Back Home
+          </button>
+          <button className="btn btn-ghost" style={{ width: 200 }}
+            onClick={() => {
+              setSelected(new Set()); setWatering(undefined)
+              setActivities(new Set()); setNotes(''); setPhase('form')
+              setDots(ACTIVE_PLANTS.map(() => 'pending'))
+            }}>
+            Log another
           </button>
         </div>
       </div>
@@ -148,17 +168,18 @@ export default function WaterLog() {
     <div className="page">
       <div className="page-header">
         <button className="back-btn" onClick={() => navigate('/')}>← Home</button>
-        <h1>Log Watering</h1>
+        <h1>Log Activity</h1>
       </div>
 
       <div className="page-body">
+
         {/* Plant selector */}
         <div>
           <div className="section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Plants</span>
             {selected.size > 0
               ? <button className="back-btn" style={{ fontSize: 13 }} onClick={() => setSelected(new Set())}>Clear</button>
-              : <button className="back-btn" style={{ fontSize: 13 }} onClick={selectAll}>All</button>
+              : <button className="back-btn" style={{ fontSize: 13 }} onClick={() => setSelected(new Set(ACTIVE_PLANTS.map(p => p.id)))}>All</button>
             }
           </div>
           <div className="plant-grid">
@@ -178,32 +199,37 @@ export default function WaterLog() {
           </div>
         </div>
 
-        {/* Time of day */}
+        {/* Watering — required */}
         <div>
-          <div className="section-label">Time of day</div>
-          <div className="time-grid">
-            {TIME_OPTIONS.map(t => (
-              <button
-                key={t.value}
-                className={`time-tile${timeOfDay === t.value ? ' selected' : ''}`}
-                onClick={() => setTimeOfDay(t.value)}
-              >
-                <span className="t-icon">{t.icon}</span>
-                <span className="t-label">{t.label}</span>
-              </button>
-            ))}
+          <div className="section-label">
+            Watering <span style={{ color: 'var(--text-dimmer)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— required</span>
+          </div>
+          <div className="vol-grid">
+            {VOLUME_OPTIONS.map(opt => {
+              const isNoWater  = opt.value === null
+              const isSelected = watering !== undefined && watering === opt.value
+              return (
+                <button
+                  key={String(opt.value)}
+                  className={`tile${isSelected ? (isNoWater ? ' no-water-selected' : ' selected') : ''}`}
+                  onClick={() => setWatering(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        {/* Volume */}
+        {/* Activities — optional */}
         <div>
-          <div className="section-label">Volume</div>
-          <div className="vol-grid">
-            {VOLUME_OPTIONS.map(opt => (
+          <div className="section-label">Activities</div>
+          <div className="tile-grid tile-grid-3">
+            {ACTIVITY_OPTIONS.map(opt => (
               <button
-                key={String(opt.value)}
-                className={`tile${volumeMl === opt.value && volumeMl !== undefined ? ' selected' : ''}`}
-                onClick={() => setVolumeMl(opt.value)}
+                key={opt.key}
+                className={`tile${activities.has(opt.key) ? ' selected' : ''}`}
+                onClick={() => toggleActivity(opt.key)}
               >
                 {opt.label}
               </button>
@@ -213,18 +239,14 @@ export default function WaterLog() {
 
         {/* Notes */}
         <div>
-          <div className="section-label">Notes</div>
-          <div className="notes-grid">
-            {NOTE_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                className={`tile${extraNote === opt.value ? ' selected' : ''}`}
-                onClick={() => setExtraNote(opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          <div className="section-label">Notes / other</div>
+          <textarea
+            className="note-textarea"
+            placeholder="Anything else — sprayed neem oil, noticed black spot, etc."
+            value={notes}
+            rows={3}
+            onChange={e => setNotes(e.target.value)}
+          />
         </div>
 
         <button
@@ -232,7 +254,7 @@ export default function WaterLog() {
           disabled={!canLog}
           onClick={doLog}
         >
-          💧 Log {selected.size > 0 ? selected.size : ''} watering{selected.size !== 1 ? 's' : ''}
+          Log {selected.size > 0 ? `${selected.size} × ` : ''}{logLabel()}
         </button>
       </div>
     </div>

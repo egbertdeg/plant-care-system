@@ -220,6 +220,13 @@ body {
   color: var(--green);
 }
 
+/* No Water selected state */
+.tile.no-water-selected {
+  background: var(--red-dim);
+  border-color: var(--red);
+  color: var(--red);
+}
+
 /* ── Plant header ──────────────────────────────────────── */
 
 .plant-header {

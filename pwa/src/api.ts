@@ -18,16 +18,20 @@ export async function addNote(plantId: number, note: string): Promise<void> {
   })
 }
 
-// Logs a watering event to the watering_events table.
-export async function logWatering(
-  plantId: number,
-  volumeMl: number | null,
-  notes: string,
-): Promise<void> {
-  await req(`/plants/${plantId}/waterings`, {
+export interface CareEvent {
+  watered: boolean
+  volume_ml?: number | null
+  fertilizer?: 'liquid' | 'rose-tone' | null
+  pruned?: boolean
+  notes?: string | null
+}
+
+// Logs a care event (watering, fertilizer, pruning, notes) for a plant.
+export async function logCareEvent(plantId: number, event: CareEvent): Promise<void> {
+  await req(`/plants/${plantId}/care`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ volume_ml: volumeMl, notes }),
+    body: JSON.stringify(event),
   })
 }
 

@@ -8,10 +8,10 @@ const WORKFLOWS = [
     desc:  'Soil moisture for all 10 plants — weekly',
   },
   {
-    to:    '/water',
+    to:    '/activity',
     icon:  '🚿',
-    title: 'Log Watering',
-    desc:  'Record a watering event for one or more plants',
+    title: 'Log Activity',
+    desc:  'Water, fertilize, prune — one or more plants',
   },
   {
     to:    '/photos',
