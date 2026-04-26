@@ -37,7 +37,6 @@ export default function Home() {
   return (
     <div className="page">
       <div className="page-header">
-        <Link to="/settings" className="back-btn" style={{ fontSize: 22 }}>⚙</Link>
         <h1>🌹 Plant Care</h1>
       </div>
       <div className="page-body">
@@ -50,6 +49,18 @@ export default function Home() {
             </div>
           </Link>
         ))}
+        <Link to="/settings" style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          color: 'var(--text-dim)',
+          fontSize: 13,
+          padding: '8px 0 4px',
+          textDecoration: 'none',
+        }}>
+          ⚙ Settings
+        </Link>
       </div>
     </div>
   )
