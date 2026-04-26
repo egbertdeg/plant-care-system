@@ -148,6 +148,14 @@ export default {
       return json({ ok: true })
     }
 
+    // DELETE /plants/:id/waterings/:eventId
+    const wateringDeleteMatch = pathname.match(/^\/plants\/(\d+)\/waterings\/(\d+)$/)
+    if (wateringDeleteMatch && method === 'DELETE') {
+      const eventId = Number(wateringDeleteMatch[2])
+      await env.DB.prepare('DELETE FROM watering_events WHERE id = ?').bind(eventId).run()
+      return json({ ok: true })
+    }
+
     // GET /readings  GET /readings/latest
     if (method === 'GET' && pathname === '/readings/latest') {
       const row = await env.DB
