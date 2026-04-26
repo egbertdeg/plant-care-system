@@ -10,7 +10,16 @@
       "Bash(python3 -m mypy *)",
       "Bash(python3 -m flake8 *)",
       "Bash(python3 -m black *)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(npm install)",
+      "Bash(npm install *)",
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(npm run preview)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push)",
+      "Bash(git push *)"
     ]
   }
 }
