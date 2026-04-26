@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(curl *)",
+      "Bash(npm install)",
+      "Bash(npm install *)",
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(npm run preview)",
+      "Bash(npm run *)",
+      "Bash(npx wrangler *)",
+      "Bash(CLOUDFLARE_API_TOKEN=* npx wrangler *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(git -C * add *)",
+      "Bash(git -C * commit *)",
+      "Bash(git -C * push)",
+      "Bash(git -C * push *)",
+      "Bash(node scripts/cleanup-test-notes.mjs)",
+      "Bash(pkill *)",
+      "mcp__claude_ai_Plant_Care_and_Library__list_plants",
+      "mcp__claude_ai_Plant_Care_and_Library__search_plants",
+      "mcp__claude_ai_Plant_Care_and_Library__get_plant",
+      "mcp__claude_ai_Plant_Care_and_Library__get_watering_history",
+      "mcp__claude_ai_Plant_Care_and_Library__get_sensor_readings",
+      "mcp__claude_ai_Plant_Care_and_Library__list_photos",
+      "mcp__claude_ai_Plant_Care_and_Library__add_note",
+      "mcp__claude_ai_Plant_Care_and_Library__create_plant",
+      "mcp__claude_ai_Plant_Care_and_Library__delete_photo",
+      "mcp__claude_ai_Plant_Care_and_Library__delete_plant",
+      "mcp__claude_ai_Plant_Care_and_Library__log_watering",
+      "mcp__claude_ai_Plant_Care_and_Library__upload_photo"
+    ]
+  }
+}
