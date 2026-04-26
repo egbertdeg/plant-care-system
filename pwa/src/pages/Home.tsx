@@ -31,6 +31,18 @@ const WORKFLOWS = [
     title: 'Photo Round',
     desc:  'Rapid photo capture for all plants — weekly',
   },
+  {
+    to:    '/setup',
+    icon:  '🖼️',
+    title: 'Hero Setup',
+    desc:  'Set a reference/vendor hero photo for each plant',
+  },
+  {
+    to:    '/import',
+    icon:  '📥',
+    title: 'History Import',
+    desc:  'Bulk import camera roll photos with EXIF timestamps',
+  },
 ]
 
 export default function Home() {

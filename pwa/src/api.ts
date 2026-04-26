@@ -50,10 +50,14 @@ export async function uploadPhoto(
   plantId: number,
   file: File,
   caption: string,
+  tier = 'round',
+  uploadedAt?: string,
 ): Promise<void> {
   const form = new FormData()
   form.append('file', file)
   form.append('caption', caption)
+  form.append('tier', tier)
+  if (uploadedAt) form.append('uploaded_at', uploadedAt)
   await req(`/plants/${plantId}/photos`, {
     method: 'POST',
     body: form,

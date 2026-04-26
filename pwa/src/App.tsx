@@ -5,6 +5,8 @@ import PhRound     from './pages/PhRound'
 import WaterLog    from './pages/WaterLog'
 import PlantNote   from './pages/PlantNote'
 import PhotoRound  from './pages/PhotoRound'
+import HeroSetup   from './pages/HeroSetup'
+import BulkImport  from './pages/BulkImport'
 
 export default function App() {
   return (
@@ -15,6 +17,8 @@ export default function App() {
       <Route path="/water"   element={<WaterLog />}    />
       <Route path="/note"    element={<PlantNote />}   />
       <Route path="/photos"  element={<PhotoRound />}  />
+      <Route path="/setup"   element={<HeroSetup />}   />
+      <Route path="/import"  element={<BulkImport />}  />
     </Routes>
   )
 }

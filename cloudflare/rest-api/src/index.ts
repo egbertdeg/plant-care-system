@@ -109,10 +109,16 @@ export default {
       const id = Number(photosMatch[1])
 
       if (method === 'GET') {
-        const { results } = await env.DB
-          .prepare('SELECT * FROM plant_photos WHERE plant_id = ? ORDER BY uploaded_at DESC')
-          .bind(id)
-          .all()
+        const tierFilter = url.searchParams.get('tier')
+        const { results } = tierFilter
+          ? await env.DB
+              .prepare('SELECT * FROM plant_photos WHERE plant_id = ? AND tier = ? ORDER BY uploaded_at DESC')
+              .bind(id, tierFilter)
+              .all()
+          : await env.DB
+              .prepare('SELECT * FROM plant_photos WHERE plant_id = ? ORDER BY uploaded_at DESC')
+              .bind(id)
+              .all()
         return json(results)
       }
 
@@ -120,21 +126,38 @@ export default {
         const form = await request.formData()
         const file = form.get('file') as File | null
         const caption = (form.get('caption') as string | null) ?? ''
+        const tier = (form.get('tier') as string | null) ?? 'round'
+        const uploadedAt = (form.get('uploaded_at') as string | null) ?? null
 
         if (!file) return err('file is required')
 
         const ext = file.name.split('.').pop() ?? 'jpg'
         const contentType = file.type || 'image/jpeg'
-        const r2Key = `plants/${id}/${Date.now()}.${ext}`
+        const r2Key = tier === 'hero'
+          ? `plants/${id}/hero.${ext}`
+          : `plants/${id}/${Date.now()}.${ext}`
+
+        // Hero: replace existing hero in R2 + DB before inserting new one
+        if (tier === 'hero') {
+          const existing = await env.DB
+            .prepare('SELECT r2_key FROM plant_photos WHERE plant_id = ? AND tier = ?')
+            .bind(id, 'hero')
+            .first()
+          if (existing) {
+            await env.PHOTOS.delete(existing.r2_key as string)
+            await env.DB.prepare('DELETE FROM plant_photos WHERE plant_id = ? AND tier = ?')
+              .bind(id, 'hero').run()
+          }
+        }
 
         await env.PHOTOS.put(r2Key, await file.arrayBuffer(), {
           httpMetadata: { contentType },
         })
 
         await env.DB.prepare(`
-          INSERT INTO plant_photos (plant_id, r2_key, filename, content_type, caption)
-          VALUES (?, ?, ?, ?, ?)
-        `).bind(id, r2Key, file.name, contentType, caption).run()
+          INSERT INTO plant_photos (plant_id, r2_key, filename, content_type, caption, tier, uploaded_at)
+          VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
+        `).bind(id, r2Key, file.name, contentType, caption, tier, uploadedAt).run()
 
         return json({ ok: true, r2_key: r2Key }, 201)
       }
@@ -181,7 +204,7 @@ export default {
       }
     }
 
-    // POST /admin/migrate — idempotent, creates tables if missing
+    // POST /admin/migrate — idempotent, creates/alters tables if missing
     if (method === 'POST' && pathname === '/admin/migrate') {
       await env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS manual_readings (
@@ -194,6 +217,12 @@ export default {
           FOREIGN KEY (plant_id) REFERENCES plants(id)
         )
       `).run()
+      // Add tier column to plant_photos — ignore error if already exists
+      try {
+        await env.DB.prepare(
+          `ALTER TABLE plant_photos ADD COLUMN tier TEXT NOT NULL DEFAULT 'round'`
+        ).run()
+      } catch { /* column already exists */ }
       return json({ ok: true, message: 'migration complete' })
     }
 
