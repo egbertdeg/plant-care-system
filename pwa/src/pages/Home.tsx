@@ -8,16 +8,16 @@ const WORKFLOWS = [
     desc:  'Soil moisture for all 10 plants — weekly',
   },
   {
-    to:    '/ph',
-    icon:  '🧪',
-    title: 'pH Round',
-    desc:  'Soil pH for all 10 plants — monthly-ish',
-  },
-  {
     to:    '/water',
     icon:  '🚿',
     title: 'Log Watering',
     desc:  'Record a watering event for one or more plants',
+  },
+  {
+    to:    '/photos',
+    icon:  '📷',
+    title: 'Photo Round',
+    desc:  'Rapid photo capture for all plants — weekly',
   },
   {
     to:    '/note',
@@ -26,10 +26,10 @@ const WORKFLOWS = [
     desc:  'Add an observation + up to 3 photos for one plant',
   },
   {
-    to:    '/photos',
-    icon:  '📷',
-    title: 'Photo Round',
-    desc:  'Rapid photo capture for all plants — weekly',
+    to:    '/ph',
+    icon:  '🧪',
+    title: 'pH Round',
+    desc:  'Soil pH for all 10 plants — monthly-ish',
   },
 ]
 
