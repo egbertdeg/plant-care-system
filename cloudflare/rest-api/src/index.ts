@@ -179,6 +179,23 @@ export default {
       return json({ ok: true })
     }
 
+    // GET /plants/needs-water — plant_ids with moisture ≤ 4 in past 24h and no watering since
+    if (method === 'GET' && pathname === '/plants/needs-water') {
+      const { results } = await env.DB.prepare(`
+        SELECT DISTINCT mr.plant_id
+        FROM manual_readings mr
+        WHERE mr.type = 'moisture'
+          AND mr.value <= 4
+          AND mr.recorded_at >= datetime('now', '-24 hours')
+          AND NOT EXISTS (
+            SELECT 1 FROM watering_events we
+            WHERE we.plant_id = mr.plant_id
+              AND we.timestamp > mr.recorded_at
+          )
+      `).all()
+      return json(results.map((r: Record<string, unknown>) => r.plant_id))
+    }
+
     // GET /plants/:id/readings  POST /plants/:id/readings
     const readingsMatch = pathname.match(/^\/plants\/(\d+)\/readings$/)
     if (readingsMatch) {

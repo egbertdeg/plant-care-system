@@ -31,6 +31,11 @@ export async function logWatering(
   })
 }
 
+// Returns plant IDs that have moisture ≤ 4 in the past 24h with no watering since.
+export async function getThirstyPlants(): Promise<number[]> {
+  return req<number[]>('/plants/needs-water')
+}
+
 // Logs a manual sensor reading (moisture, pH, etc.) to the manual_readings table.
 export async function logReading(
   plantId: number,

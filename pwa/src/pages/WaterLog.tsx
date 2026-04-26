@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ACTIVE_PLANTS } from '../plants'
-import { logWatering } from '../api'
+import { logWatering, getThirstyPlants } from '../api'
 
 type TimeOfDay = 'AM' | 'PM' | 'Evening'
 type DotStatus = 'pending' | 'loading' | 'done' | 'error'
@@ -18,7 +18,7 @@ const VOLUME_OPTIONS: { label: string; value: number | null }[] = [
   { label: '500ml', value: 500   },
   { label: '750ml', value: 750   },
   { label: '1 L',   value: 1000  },
-  { label: '2 L',   value: 2000  },
+  { label: 'Soaked', value: 2000  },
 ]
 
 const NOTE_OPTIONS = [
@@ -31,13 +31,18 @@ const NOTE_OPTIONS = [
 export default function WaterLog() {
   const navigate = useNavigate()
 
-  const [selected,  setSelected]  = useState<Set<number>>(new Set())
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null)
-  const [volumeMl,  setVolumeMl]  = useState<number | null | undefined>(undefined) // undefined = not chosen
-  const [extraNote, setExtraNote] = useState('')
-  const [phase,     setPhase]     = useState<'form' | 'logging' | 'done'>('form')
-  const [dots,      setDots]      = useState<DotStatus[]>(ACTIVE_PLANTS.map(() => 'pending'))
-  const [errorMsg,  setErrorMsg]  = useState<string | null>(null)
+  const [selected,   setSelected]   = useState<Set<number>>(new Set())
+  const [timeOfDay,  setTimeOfDay]  = useState<TimeOfDay | null>(null)
+  const [volumeMl,   setVolumeMl]   = useState<number | null | undefined>(undefined) // undefined = not chosen
+  const [extraNote,  setExtraNote]  = useState('')
+  const [phase,      setPhase]      = useState<'form' | 'logging' | 'done'>('form')
+  const [dots,       setDots]       = useState<DotStatus[]>(ACTIVE_PLANTS.map(() => 'pending'))
+  const [errorMsg,   setErrorMsg]   = useState<string | null>(null)
+  const [thirstyIds, setThirstyIds] = useState<Set<number>>(new Set())
+
+  useEffect(() => {
+    getThirstyPlants().then(ids => setThirstyIds(new Set(ids))).catch(() => {})
+  }, [])
 
   function togglePlant(id: number) {
     setSelected(s => {
@@ -157,16 +162,19 @@ export default function WaterLog() {
             }
           </div>
           <div className="plant-grid">
-            {ACTIVE_PLANTS.map(p => (
-              <button
-                key={p.id}
-                className={`plant-tile${selected.has(p.id) ? ' selected' : ''}`}
-                onClick={() => togglePlant(p.id)}
-              >
-                <span className="pt-label">{p.label}</span>
-                <span className="pt-name">{p.shortName}</span>
-              </button>
-            ))}
+            {ACTIVE_PLANTS.map(p => {
+              const thirsty = thirstyIds.has(p.id) && !selected.has(p.id)
+              return (
+                <button
+                  key={p.id}
+                  className={`plant-tile${selected.has(p.id) ? ' selected' : thirsty ? ' thirsty' : ''}`}
+                  onClick={() => togglePlant(p.id)}
+                >
+                  <span className="pt-label">{p.label}</span>
+                  <span className="pt-name">{p.shortName}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
 

@@ -398,6 +398,15 @@ body {
   background: var(--green-dim);
 }
 
+.plant-tile.thirsty {
+  border-color: var(--blue);
+  background: var(--blue-dim);
+}
+
+.plant-tile.thirsty .pt-label {
+  color: var(--blue);
+}
+
 .plant-tile .pt-label {
   font-size: 16px;
   font-weight: 800;
