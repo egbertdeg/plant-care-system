@@ -1,4 +1,4 @@
-const BASE = 'https://plant-care-mcp.egbert-degroot.workers.dev'
+const BASE = 'https://plant-care-api.egbert-degroot.workers.dev'
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init)
@@ -9,30 +9,16 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-interface PlantRecord {
-  id: number
-  name: string
-  notes: string | null
-  [key: string]: unknown
-}
-
-async function getPlant(plantId: number): Promise<PlantRecord> {
-  return req<PlantRecord>(`/plants/${plantId}`)
-}
-
-// Appends a dated note line to the plant's running notes field (GET → append → PUT).
+// Atomically appends a dated note line to the plant's notes field.
 export async function addNote(plantId: number, note: string): Promise<void> {
-  const plant = await getPlant(plantId)
-  const current = plant.notes?.trim() ?? ''
-  const updated = current ? `${current}\n${note}` : note
-  await req(`/plants/${plantId}`, {
-    method: 'PUT',
+  await req(`/plants/${plantId}/notes`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ notes: updated }),
+    body: JSON.stringify({ note }),
   })
 }
 
-// Logs a watering event to the waterings table.
+// Logs a watering event to the watering_events table.
 export async function logWatering(
   plantId: number,
   volumeMl: number | null,
