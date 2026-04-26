@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(mkdir *)",
       "Bash(touch *)",
@@ -19,7 +20,11 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(git push)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git -C * add *)",
+      "Bash(git -C * commit *)",
+      "Bash(git -C * push)",
+      "Bash(git -C * push *)"
     ]
   }
 }
