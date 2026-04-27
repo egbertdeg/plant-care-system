@@ -9,12 +9,13 @@ type Phase = 'pick' | 'chat' | 'summarizing' | 'done'
 
 interface UIMessage {
   role: 'user' | 'assistant'
-  content: string      // what Claude sees
+  content: string
   photoUrl?: string    // local object URL for display only
+  imageData?: { base64: string; mediaType: string }  // sent to Claude as vision block
 }
 
 function toApi(msgs: UIMessage[]): ChatMessage[] {
-  return msgs.map(({ role, content }) => ({ role, content }))
+  return msgs.map(({ role, content, imageData }) => ({ role, content, ...(imageData && { imageData }) }))
 }
 
 export default function PlantNote() {
@@ -54,8 +55,10 @@ export default function PlantNote() {
     if (!plantId || messages.length === 0) { navigate('/'); return }
     if (idleTimer.current) clearTimeout(idleTimer.current)
     setPhase('summarizing')
+    setErrorMsg(null)
     try {
-      const result = await summarizeChat(plantId, toApi(messages))
+      const textOnly = messages.map(({ role, content }) => ({ role, content }))
+      const result = await summarizeChat(plantId, textOnly)
       setSavedNote(result.plant_note)
       setGardenNote(result.garden_note ?? null)
       setPhase('done')
@@ -109,12 +112,29 @@ export default function PlantNote() {
     resetIdleTimer()
 
     try {
+      // Resize + convert to JPEG so the payload is small and always a supported format
+      const img = new Image()
+      img.src = localUrl
+      await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = reject })
+      const MAX_DIM = 1024
+      const scale = Math.min(1, MAX_DIM / Math.max(img.naturalWidth, img.naturalHeight))
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.round(img.naturalWidth  * scale)
+      canvas.height = Math.round(img.naturalHeight * scale)
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+      const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
+
       const date = new Date().toISOString().split('T')[0]
       await uploadPhoto(plantId, file, `${selectedPlant?.label} - ${date} - chat`)
 
       const next: UIMessage[] = [
         ...messages,
-        { role: 'user', content: 'I just took a photo of the plant.', photoUrl: localUrl },
+        {
+          role: 'user',
+          content: 'Here is a photo of my plant.',
+          photoUrl: localUrl,
+          imageData: { base64, mediaType: 'image/jpeg' },
+        },
       ]
       setMessages(next)
 
@@ -218,6 +238,7 @@ export default function PlantNote() {
         <button
           className="btn btn-secondary"
           style={{ minHeight: 36, fontSize: 14, padding: '0 12px' }}
+          disabled={sending}
           onClick={finish}
         >
           Finish

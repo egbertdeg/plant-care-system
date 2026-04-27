@@ -5,16 +5,16 @@ import { logCareEvent, getThirstyPlants } from '../api'
 
 type DotStatus = 'pending' | 'loading' | 'done' | 'error'
 
-// undefined = nothing chosen yet (blocks submit); null = No Water chosen
-type WateringChoice = number | null | undefined
+// undefined = nothing chosen yet (blocks submit); null = No Water chosen; 'soaked' = watered but no measured volume
+type WateringChoice = number | null | 'soaked' | undefined
 
-const VOLUME_OPTIONS: { label: string; value: number | null }[] = [
-  { label: '250ml',    value: 250  },
-  { label: '500ml',    value: 500  },
-  { label: '750ml',    value: 750  },
-  { label: '1 L',      value: 1000 },
-  { label: 'Soaked',   value: 2000 },
-  { label: 'No Water', value: null },
+const VOLUME_OPTIONS: { label: string; value: number | null | 'soaked' }[] = [
+  { label: '250ml',    value: 250     },
+  { label: '500ml',    value: 500     },
+  { label: '750ml',    value: 750     },
+  { label: '1 L',      value: 1000   },
+  { label: 'Soaked',   value: 'soaked' },
+  { label: 'No Water', value: null   },
 ]
 
 const ACTIVITY_OPTIONS: { label: string; key: 'liquid' | 'rose-tone' | 'pruned' }[] = [
@@ -63,7 +63,7 @@ export default function ActivityLog() {
 
     const event = {
       watered:    watering !== null,
-      volume_ml:  watering ?? null,
+      volume_ml:  (watering === null || watering === 'soaked') ? null : watering,
       fertilizer: activities.has('liquid')    ? 'liquid'    as const
                 : activities.has('rose-tone') ? 'rose-tone' as const
                 : null,

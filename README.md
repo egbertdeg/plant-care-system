@@ -34,15 +34,12 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 
 ## Live Endpoints
 
-### MCP + Ingest worker
+### MCP server (Claude.ai integration)
 `https://plant-care-mcp.egbert-degroot.workers.dev`
 
 | Endpoint | Description |
 |---|---|
 | `GET /mcp` | MCP server endpoint for Claude.ai |
-| `POST /ingest/sensors` | Sensor pod readings |
-| `POST /ingest/watering` | Watering can events |
-| `POST /ingest/status` | Watering can status |
 
 ### REST API worker (used by PWA)
 `https://plant-care-api.egbert-degroot.workers.dev`
@@ -59,9 +56,14 @@ Smart IoT system for monitoring plant health and tracking watering patterns.
 | `GET /plants/{id}/photos[?tier=]` | List photos (filter by tier: hero/round/history) |
 | `POST /plants/{id}/photos` | Upload photo to R2 (fields: file, caption, tier, uploaded_at) |
 | `DELETE /plants/{id}/photos/{photoId}` | Delete a photo |
+| `GET /photos/{id}` | Fetch photo as base64 (used by MCP `get_photo` tool) |
 | `GET /plants/{id}/readings` | Manual sensor readings (moisture, pH) |
 | `POST /plants/{id}/readings` | Log a manual reading |
 | `GET /plants/needs-water` | Plant IDs with moisture ≤ 4 in past 24h and no watering since |
+| `POST /plants/{id}/chat` | One chat turn — Claude (haiku) with plant context |
+| `POST /plants/{id}/chat/summarize` | Summarize conversation → save to plant notes + garden notes |
+| `GET /garden/notes` | Garden-wide knowledge store |
+| `POST /garden/notes` | Add garden note (body: `{ category, body }`) |
 | `GET /readings` | ESP32 sensor reading history |
 | `GET /readings/latest` | Most recent ESP32 reading |
 | `GET /weather/daily` | Daily weather history (max temp, precip, humidity, ET₀, GDD) |
@@ -91,7 +93,7 @@ Both the PWA and REST API are deployed as Cloudflare Workers — no local server
 | `/sensors` | Weekly | Soil moisture for all plants — tap 1–10, auto-advance, batch-log to `manual_readings` |
 | `/water` | After watering | Multi-select plants → time of day → volume → log; thirsty plants (moisture ≤ 4, unwatered) highlighted blue |
 | `/photos` | Weekly | Per-plant camera capture → review → upload all |
-| `/note` | As needed | Claude chat about a plant — auto-logs a summary note on finish or 5 min idle |
+| `/note` | As needed | Claude chat about a plant — camera button sends photo directly to Claude (vision); auto-logs a summary note on Finish or 5 min idle |
 | `/ph` | Monthly | Soil pH for all plants — tap 4.0–8.5, auto-advance, batch-log to `manual_readings` |
 
 **Settings (gear icon → `/settings`):**
@@ -116,10 +118,9 @@ The easiest way to work on the Cloudflare Worker is via **GitHub Codespaces** �
 cd cloudflare/rest-api
 npx wrangler deploy
 
-# MCP + ingest worker (Claude.ai + firmware)
-cd cloudflare
-npm run dev      # local dev server
-npm run deploy   # deploy to production
+# MCP server (Claude.ai)
+cd cloudflare/mcp-server
+npx wrangler deploy
 ```
 
 ### Firmware (local only — requires USB/OTA)
@@ -141,8 +142,9 @@ See [firmware/sensor_pod/README.md](firmware/sensor_pod/README.md) and [firmware
 │   └── watering_can/   # Tracks watering events — HTTP POST to Cloudflare
 ├── cloudflare/         # Cloudflare Workers
 │   ├── rest-api/             # REST API worker — used by PWA
+│   ├── mcp-server/           # MCP server — Claude.ai integration via Connectors
 │   └── weather-integration/  # D1 migration + cron handler — ready to integrate
-├── pwa/                # React PWA — 5 workflows (moisture, pH, water, notes, photos)
+├── pwa/                # React PWA — workflows: moisture, pH, water, photos, plant chat
 ├── backend/            # FastAPI backend — deprecated, replaced by Cloudflare
 ├── mobile/             # Flutter app — shelved
 ├── docs/               # Documentation

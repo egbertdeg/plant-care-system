@@ -1,0 +1,21 @@
+name = "plant-care-mcp"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "MCP_OBJECT"
+class_name = "PlantCareMCP"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PlantCareMCP"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "plant-care"
+database_id = "fcc66b86-ae3d-42c5-be08-8524119197de"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "plant-photos"

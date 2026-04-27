@@ -36,7 +36,8 @@
       "mcp__claude_ai_Plant_Care_and_Library__delete_photo",
       "mcp__claude_ai_Plant_Care_and_Library__delete_plant",
       "mcp__claude_ai_Plant_Care_and_Library__log_watering",
-      "mcp__claude_ai_Plant_Care_and_Library__upload_photo"
+      "mcp__claude_ai_Plant_Care_and_Library__upload_photo",
+      "mcp__claude_ai_Plant_Care_and_Library__get_photo"
     ]
   }
 }

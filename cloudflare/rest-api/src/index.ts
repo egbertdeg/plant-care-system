@@ -7,6 +7,7 @@ interface Env {
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  imageData?: { base64: string; mediaType: string }
 }
 
 const CORS = {
@@ -28,6 +29,19 @@ function err(msg: string, status = 400): Response {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      return await handleRequest(request, env)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 500,
+        headers: { ...CORS, 'Content-Type': 'application/json' },
+      })
+    }
+  },
+}
+
+async function handleRequest(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: CORS })
     }
@@ -211,6 +225,38 @@ export default {
       const photoId = Number(photoDeleteMatch[2])
       await env.DB.prepare('DELETE FROM plant_photos WHERE id = ?').bind(photoId).run()
       return json({ ok: true })
+    }
+
+    // GET /photos/:id — fetch photo from R2, return base64 + metadata
+    const photoGetMatch = pathname.match(/^\/photos\/(\d+)$/)
+    if (photoGetMatch && method === 'GET') {
+      const photoId = Number(photoGetMatch[1])
+      const row = await env.DB
+        .prepare('SELECT * FROM plant_photos WHERE id = ?')
+        .bind(photoId)
+        .first() as Record<string, unknown> | null
+      if (!row) return err('Photo not found', 404)
+
+      const obj = await env.PHOTOS.get(row.r2_key as string)
+      if (!obj) return err('Photo data not found in storage', 404)
+
+      const bytes = new Uint8Array(await obj.arrayBuffer())
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
+      }
+      const base64 = btoa(binary)
+
+      return json({
+        id:          row.id,
+        plant_id:    row.plant_id,
+        filename:    row.filename,
+        content_type: row.content_type,
+        caption:     row.caption,
+        tier:        row.tier,
+        uploaded_at: row.uploaded_at,
+        base64,
+      })
     }
 
     // GET /plants/needs-water — plant_ids with moisture ≤ 4 in past 24h and no watering since
@@ -416,6 +462,19 @@ ${readingLines}
 Garden-wide knowledge:
 ${gardenContext}`
 
+      const claudeMessages = messages.map((m: ChatMessage) => {
+        if (m.imageData) {
+          return {
+            role: m.role,
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: m.imageData.mediaType, data: m.imageData.base64 } },
+              { type: 'text', text: m.content },
+            ],
+          }
+        }
+        return { role: m.role, content: m.content }
+      })
+
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -427,7 +486,7 @@ ${gardenContext}`
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 512,
           system: systemPrompt,
-          messages,
+          messages: claudeMessages,
         }),
       })
 
@@ -448,7 +507,7 @@ ${gardenContext}`
       const { messages } = await request.json() as { messages: ChatMessage[] }
       if (!Array.isArray(messages) || messages.length === 0) return err('messages array required')
 
-      const plant = await env.DB.prepare('SELECT name, label FROM plants WHERE id = ?').bind(id).first() as Record<string, unknown> | null
+      const plant = await env.DB.prepare('SELECT name FROM plants WHERE id = ?').bind(id).first() as Record<string, unknown> | null
       if (!plant) return err('Plant not found', 404)
 
       const today = new Date().toISOString().split('T')[0]
@@ -522,5 +581,4 @@ Plant note categories: Assessment, Watering, Pruning, Health, Feeding, Photo, Bl
     }
 
     return err('Not found', 404)
-  },
 }

@@ -57,6 +57,7 @@ export async function logReading(
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  imageData?: { base64: string; mediaType: string }
 }
 
 // Sends one chat turn for a plant and returns the assistant reply.
