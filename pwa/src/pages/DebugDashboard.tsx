@@ -644,7 +644,7 @@ function PlantDetailChart({ plant }: { plant: DebugPlant }) {
                     {mReading ? `${mReading.value}${mReading.stale ? ' (stale)' : ''}` : '—'}
                   </td>
                   <td style={{ padding: '5px 8px', color: 'var(--green)' }}>
-                    {waterEvent ? `💧 ${waterEvent.volume_ml ?? '?'}ml` : ''}
+                    {waterEvent ? `💧 ${waterEvent.volume_ml != null ? `${waterEvent.volume_ml}ml` : 'soaked'}` : ''}
                   </td>
                 </tr>
               )
