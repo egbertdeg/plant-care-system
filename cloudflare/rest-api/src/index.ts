@@ -78,6 +78,10 @@ function computeDeficit(
   let anchorDate: string | null = null
   let anchorMoisture: number | null = null
 
+  // Normalize to date-only for comparisons against weather rows (which are date strings)
+  const lastWateredDate = lastWatered.substring(0, 10)
+  const anchorDateStr = moistureAnchor ? moistureAnchor.moisture_at.substring(0, 10) : null
+
   if (moistureAnchor && moistureAnchor.moisture_at > lastWatered) {
     // Anchor from fresh moisture reading: convert reading → implied deficit, then add ET0 since
     const implied = Math.max(
@@ -85,14 +89,14 @@ function computeDeficit(
       ((MAX_MOISTURE - moistureAnchor.moisture) / (MAX_MOISTURE - minMoisture)) * budget
     )
     const etSince = weatherRows
-      .filter((w) => w.is_forecast === 0 && w.date > moistureAnchor.moisture_at)
+      .filter((w) => w.is_forecast === 0 && w.date > anchorDateStr!)
       .reduce((s, w) => s + Math.max(0, w.et0_mm - w.precip_mm * RAIN_EFFICIENCY), 0)
     soilDeficit = implied + etSince
-    anchorDate = moistureAnchor.moisture_at
+    anchorDate = anchorDateStr
     anchorMoisture = moistureAnchor.moisture
   } else {
     soilDeficit = weatherRows
-      .filter((w) => w.is_forecast === 0 && w.date > lastWatered)
+      .filter((w) => w.is_forecast === 0 && w.date > lastWateredDate)
       .reduce((s, w) => s + Math.max(0, w.et0_mm - w.precip_mm * RAIN_EFFICIENCY), 0)
   }
 
@@ -497,7 +501,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
             .bind(id, userId)
             .first(),
           env.DB.prepare(
-            'SELECT DATE(MAX(recorded_at)) as last_watered FROM care_events WHERE plant_id = ? AND user_id = ? AND watered = 1'
+            'SELECT MAX(recorded_at) as last_watered FROM care_events WHERE plant_id = ? AND user_id = ? AND watered = 1'
           )
             .bind(id, userId)
             .first(),
@@ -508,7 +512,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           (plantRow as { indoor_outdoor: string } | null)?.indoor_outdoor === 'indoor'
         if (prevLW && !isIndoor) {
           const daysDiff = Math.round(
-            (new Date(today + 'T12:00:00').getTime() - new Date(prevLW + 'T12:00:00').getTime()) /
+            (new Date(today + 'T12:00:00').getTime() -
+              new Date(prevLW.includes('T') ? prevLW : prevLW + 'T12:00:00').getTime()) /
               86400000
           )
           if (daysDiff >= 3) {
@@ -2891,7 +2896,7 @@ ${plantList}`
       env.DB.prepare('SELECT * FROM plants WHERE user_id = ? ORDER BY id').bind(userId).all(),
       env.DB.prepare(
         `
-        SELECT plant_id, DATE(MAX(recorded_at)) as last_watered
+        SELECT plant_id, MAX(recorded_at) as last_watered
         FROM care_events WHERE user_id = ? AND watered = 1 GROUP BY plant_id
       `
       )
@@ -2899,7 +2904,7 @@ ${plantList}`
         .all(),
       env.DB.prepare(
         `
-        SELECT plant_id, value as moisture, DATE(MAX(recorded_at)) as moisture_at
+        SELECT plant_id, value as moisture, MAX(recorded_at) as moisture_at
         FROM manual_readings WHERE user_id = ? AND type = 'moisture' GROUP BY plant_id
       `
       )
@@ -2982,7 +2987,7 @@ ${plantList}`
         reason,
         soil_deficit_mm: isIndoor ? null : soilDeficit,
         et0_budget_mm: isIndoor ? null : budget,
-        last_watered: lw,
+        last_watered: lw ? lw.substring(0, 10) : null,
         forecast_next_due: forecastNextDue,
         days_until_due: daysUntilDue,
         latest_moisture: moisture,
@@ -3085,7 +3090,7 @@ ${plantList}`
     const [lastWateredRes, latestMoistureRes] = await Promise.all([
       env.DB.prepare(
         `
-        SELECT plant_id, DATE(MAX(recorded_at)) as last_watered
+        SELECT plant_id, MAX(recorded_at) as last_watered
         FROM care_events WHERE user_id = ? AND watered = 1 GROUP BY plant_id
       `
       )
@@ -3093,7 +3098,7 @@ ${plantList}`
         .all(),
       env.DB.prepare(
         `
-        SELECT plant_id, value as moisture, DATE(MAX(recorded_at)) as moisture_at
+        SELECT plant_id, value as moisture, MAX(recorded_at) as moisture_at
         FROM manual_readings WHERE user_id = ? AND type = 'moisture' GROUP BY plant_id
       `
       )
@@ -3211,7 +3216,7 @@ ${plantList}`
         indoor_outdoor: p.indoor_outdoor,
         et0_budget_mm: budget,
         min_moisture: minMoisture,
-        last_watered: lwDate,
+        last_watered: lwDate ? lwDate.substring(0, 10) : null,
         soil_deficit_mm: isIndoor
           ? null
           : soilDeficit !== null
